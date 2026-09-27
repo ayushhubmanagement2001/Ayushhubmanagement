@@ -13,7 +13,7 @@ const connectDB = async () => {
     let connStr =
       process.env.MONGODB_URI ||
       process.env.MONGO_URL ||
-      'mongodb://localhost:27017/AYUSH_WESBITE';
+      'mongodb+srv://ayushhubmanagement_db_user:3eoWHTct2Ewp7IfR@ayushhubmanagement.upg5ysf.mongodb.net/ayushhubmanagement?retryWrites=true&w=majority';
 
     // Strip surrounding quotes if present in .env
     connStr = connStr.trim().replace(/^["']|["']$/g, '');
