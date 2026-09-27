@@ -1,11 +1,5 @@
 import dns from 'dns';
 import nodemailer from 'nodemailer';
-import path from 'path';
-import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Force IPv4 DNS lookup order to prevent ENETUNREACH in cloud environments like Render
 try {
@@ -15,20 +9,6 @@ try {
 } catch (e) {
   // Ignore if not supported
 }
-
-// Reload env vars dynamically if needed
-const reloadEnv = () => {
-  try {
-    dotenv.config({ path: path.join(__dirname, '../../.env.local'), override: true });
-    dotenv.config({ path: path.join(__dirname, '../../.env.development'), override: true });
-    dotenv.config({ path: path.join(__dirname, '../../.env'), override: true });
-  } catch (err) {
-    // Ignore
-  }
-};
-
-let cachedTransporter = null;
-let cachedTransporterKey = '';
 
 /**
  * Send email using HTTP API (Resend / Brevo) or Nodemailer SMTP fallback.
@@ -41,8 +21,6 @@ export const sendEmailMessage = async ({
   text,
   attachments = [],
 }) => {
-  reloadEnv();
-
   const recipient = Array.isArray(to) ? to.join(', ') : to;
   const resendApiKey = process.env.RESEND_API_KEY?.trim();
   const brevoApiKey = process.env.BREVO_API_KEY?.trim();
@@ -66,10 +44,7 @@ export const sendEmailMessage = async ({
         };
       });
 
-      const resendFrom =
-        process.env.RESEND_FROM?.trim() ||
-        process.env.EMAIL_FROM?.trim() ||
-        'Ayush Hub Management <onboarding@resend.dev>';
+      const resendFrom = 'Ayush Hub Management <onboarding@resend.dev>';
 
       const payload = {
         from: resendFrom,
@@ -92,7 +67,16 @@ export const sendEmailMessage = async ({
       const resData = await response.json();
 
       if (!response.ok) {
-        throw new Error(resData.message || JSON.stringify(resData));
+        const resendMessage = resData.message || JSON.stringify(resData);
+        if (
+          response.status === 403 &&
+          resendMessage.toLowerCase().includes('only send testing emails')
+        ) {
+          throw new Error(
+            'Resend testing emails can only be sent to the email address associated with the Resend account.'
+          );
+        }
+        throw new Error(resendMessage);
       }
 
       console.log(`[Email Service Success - Resend]: ID ${resData.id}`);
@@ -105,6 +89,12 @@ export const sendEmailMessage = async ({
       console.error('[Email Service Resend Error]:', err.message);
       throw new Error(`Resend email delivery failed: ${err.message}`);
     }
+  }
+
+  if (process.env.RENDER) {
+    throw new Error(
+      'RESEND_API_KEY is required for email delivery on Render. SMTP and other email providers are not supported in the Render production path.'
+    );
   }
 
   // =========================================================================

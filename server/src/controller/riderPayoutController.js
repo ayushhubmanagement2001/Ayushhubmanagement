@@ -605,9 +605,24 @@ export const sendPayoutEmail = async (req, res, next) => {
       summary = {},
     } = req.body;
 
-    if (!toEmail) {
+    if (!process.env.RESEND_API_KEY?.trim()) {
+      res.status(500);
+      throw new Error('Email service is not configured. Please set RESEND_API_KEY.');
+    }
+
+    if (!toEmail || !toEmail.trim()) {
       res.status(400);
       throw new Error('Recipient email is required.');
+    }
+
+    if (!subject || !subject.trim()) {
+      res.status(400);
+      throw new Error('Email subject is required.');
+    }
+
+    if (!Array.isArray(headers) || headers.length === 0 || !Array.isArray(rows) || rows.length === 0) {
+      res.status(400);
+      throw new Error('An Excel payout report is required.');
     }
 
     const emailSubject = subject || `Please find the below data of ${month} ${companyName}`;
