@@ -4,7 +4,7 @@ import { getStorageItem, setStorageItem, removeStorageItem, STORAGE_KEYS } from 
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 15000,
+  timeout: 45000, // 45 seconds (allows cloud cold-starts and email dispatches to complete)
   headers: {
     'Content-Type': 'application/json',
   },

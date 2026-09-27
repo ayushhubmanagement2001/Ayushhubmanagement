@@ -195,9 +195,9 @@ export const sendEmailMessage = async ({
       tls: {
         rejectUnauthorized: false,
       },
-      connectionTimeout: 8000,
-      greetingTimeout: 8000,
-      socketTimeout: 12000,
+      connectionTimeout: 4000,
+      greetingTimeout: 4000,
+      socketTimeout: 8000,
     });
   };
 
