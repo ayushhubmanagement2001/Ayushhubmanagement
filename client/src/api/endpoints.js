@@ -4,12 +4,15 @@
  */
 
 // Normalize API_BASE_URL so it always has /api and no trailing slash
-const rawApiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:4500/api').trim().replace(/\/+$/, '');
+const defaultApiUrl = import.meta.env.PROD
+  ? 'https://ayushhubmanagement.onrender.com/api'
+  : 'http://localhost:4500/api';
+const rawApiUrl = (import.meta.env.VITE_API_URL || defaultApiUrl).trim().replace(/\/+$/, '');
 export const API_BASE_URL = rawApiUrl.endsWith('/api') ? rawApiUrl : `${rawApiUrl}/api`;
 export const SERVER_STATIC_URL = (
   import.meta.env.VITE_SERVER_URL ||
   rawApiUrl.replace(/\/api$/, '') ||
-  'http://localhost:4500'
+  import.meta.env.PROD ? 'https://ayushhubmanagement.onrender.com' : 'http://localhost:4500'
 ).trim().replace(/\/+$/, '');
 
 export const ENDPOINTS = {
