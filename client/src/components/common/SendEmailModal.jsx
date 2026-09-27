@@ -10,7 +10,7 @@ export const SendEmailModal = ({
   reportTitle = 'Report Ledger',
   reportType = 'Report',
   sheetName = 'Report Data',
-  defaultRecipient = 'vineetpancheshwar1611@gmail.com',
+  defaultRecipient = 'ayushhubmanagement@gmail.com',
   defaultSubject = '',
   defaultMessage = '',
   filename = 'Report.xlsx',
@@ -29,7 +29,7 @@ export const SendEmailModal = ({
   // Sync default values when modal opens or props change
   useEffect(() => {
     if (isOpen) {
-      setToEmail(defaultRecipient || 'vineetpancheshwar1611@gmail.com');
+      setToEmail(defaultRecipient || 'ayushhubmanagement@gmail.com');
       setSubject(defaultSubject || `Ayush Hub Management - ${reportTitle} Export`);
       setCustomMessage(
         defaultMessage ||

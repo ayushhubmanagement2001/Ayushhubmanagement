@@ -70,7 +70,7 @@ export const createTransporter = async () => {
 export const sendReportEmail = async (req, res, next) => {
   try {
     const {
-      toEmail = 'vineetpancheshwar1611@gmail.com',
+      toEmail = 'ayushhubmanagement@gmail.com',
       subject,
       customMessage = '',
       reportTitle = 'Report Ledger',

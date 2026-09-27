@@ -50,7 +50,7 @@ export const Categories = () => {
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [emailForm, setEmailForm] = useState({
-    toEmail: 'vineetpancheshwar1611@gmail.com',
+    toEmail: 'ayushhubmanagement@gmail.com',
     subject: '',
     customMessage: '',
   });
@@ -730,7 +730,7 @@ export const Categories = () => {
   const openEmailModal = () => {
     const compName = currentCompany?.name || 'Company';
     setEmailForm({
-      toEmail: 'vineetpancheshwar1611@gmail.com',
+      toEmail: 'ayushhubmanagement@gmail.com',
       subject: `Please find the below data of ${selectedMonthFilter} ${compName}`,
       customMessage: `Please find attached the exported rider payout ledger for ${compName} for ${selectedMonthFilter} (${selectedFinancialYear || ''}).`,
     });
@@ -1220,14 +1220,14 @@ export const Categories = () => {
                   <input
                     type="email"
                     required
-                    placeholder="e.g. vineetpancheshwar1611@gmail.com"
+                    placeholder="e.g. ayushhubmanagement@gmail.com"
                     value={emailForm.toEmail}
                     onChange={(e) => setEmailForm({ ...emailForm, toEmail: e.target.value })}
                     className="w-full pl-9 pr-3 py-2 text-xs border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-600 font-medium transition-all"
                   />
                 </div>
                 <p className="text-[10px] text-gray-400 mt-1">
-                  Default recipient is <span className="font-semibold text-gray-700">vineetpancheshwar1611@gmail.com</span>, or change to any email address.
+                  Default recipient is <span className="font-semibold text-gray-700">ayushhubmanagement@gmail.com</span>, or change to any email address.
                 </p>
               </div>
 
