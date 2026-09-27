@@ -1899,23 +1899,41 @@ export const Dashboard = () => {
           </div>
         </div>
 
-        {/* Card 4: Attention Required (100% Dynamic) */}
-        <div className="group relative overflow-hidden bg-white border border-rose-200/80 rounded-2xl p-5 shadow-[0_4px_20px_-2px_rgba(0,0,0,0.05),0_1px_3px_rgba(0,0,0,0.02)] hover:shadow-[0_12px_28px_-4px_rgba(0,0,0,0.08)] transition-all duration-300 flex flex-col justify-between">
-          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-500 to-amber-500" />
+        {/* Card 4: Attention Required (100% Dynamic - Highlighted Alert Style) */}
+        <div className="group relative overflow-hidden bg-gradient-to-b from-rose-50/50 via-white to-white border-2 border-rose-300/90 rounded-2xl p-5 shadow-[0_8px_28px_rgba(244,63,94,0.12),0_1px_3px_rgba(0,0,0,0.02)] hover:shadow-[0_14px_36px_rgba(244,63,94,0.22)] transition-all duration-300 flex flex-col justify-between">
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-rose-500 via-red-500 to-amber-500" />
           <div>
             <div className="flex items-center justify-between mb-3.5">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100/60">
-                  <Bell className="w-4 h-4 fill-rose-100" />
+              <div className="flex items-center gap-2.5">
+                {/* Highlighted Radiant Bell Icon Container with Glowing Radar Effect */}
+                <div className="relative">
+                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-rose-500 to-red-600 text-white flex items-center justify-center shadow-lg shadow-rose-500/40 border border-rose-400/50 animate-pulse-glow">
+                    <Bell
+                      className="w-5 h-5 fill-white/20 text-white animate-bell-ring origin-top drop-shadow-sm"
+                      style={{ transformOrigin: 'top center' }}
+                    />
+                  </div>
+                  {/* Glowing Radar Ping Dot */}
+                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-80" />
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500 border-2 border-white shadow-xs" />
+                  </span>
                 </div>
+
                 <div>
-                  <span className="text-xs font-bold text-slate-800 leading-tight block">Attention Required</span>
-                  <span className="text-[10px] text-slate-400 font-medium">Urgent Actions</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-black text-slate-900 leading-tight block">Attention Required</span>
+                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                  </div>
+                  <span className="text-[10px] text-rose-600 font-bold uppercase tracking-wider">Urgent Actions</span>
                 </div>
               </div>
               <span
-                className={`px-2 py-0.5 rounded-full text-white text-[10px] font-extrabold ${attentionItems.length > 0 ? 'bg-rose-500 shadow-xs' : 'bg-emerald-500'
-                  }`}
+                className={`px-2.5 py-0.5 rounded-full text-white text-[11px] font-black shadow-xs ${
+                  attentionItems.length > 0
+                    ? 'bg-gradient-to-r from-rose-500 to-red-600 shadow-rose-500/40 ring-2 ring-rose-300'
+                    : 'bg-emerald-500 shadow-emerald-500/30'
+                }`}
               >
                 {attentionItems.length}
               </span>
