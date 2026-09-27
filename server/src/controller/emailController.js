@@ -3,6 +3,7 @@ import nodemailer from 'nodemailer';
 import path from 'path';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
+import { sendEmailMessage } from '../utils/emailService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -277,12 +278,7 @@ export const sendReportEmail = async (req, res, next) => {
     `;
 
     // 5. Send Mail
-    const { transporter } = await createTransporter();
-
-    const mailOptions = {
-      from:
-        process.env.EMAIL_FROM ||
-        `"Ayush Hub Management" <${process.env.SMTP_USER || 'roommilega1611@gmail.com'}>`,
+    const info = await sendEmailMessage({
       to: toEmail,
       subject: emailSubject,
       text: `Ayush Hub Management - ${reportTitle} Report\n\nPeriod / Context: ${metadata?.map(m => `${m.label}: ${m.value}`).join(' | ') || 'Attached'}\n\nPlease find the attached official Excel report breakdown.\n${customMessage ? `\nNotes: ${customMessage}\n` : ''}\nRegards,\nAyush Hub Management`,
@@ -297,21 +293,15 @@ export const sendReportEmail = async (req, res, next) => {
             },
           ]
         : [],
-    };
+    });
 
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`[Email Sent to ${toEmail}]:`, info.messageId, info.response);
-
-    let previewUrl = null;
-    if (nodemailer.getTestMessageUrl) {
-      previewUrl = nodemailer.getTestMessageUrl(info);
-    }
+    console.log(`[Email Sent to ${toEmail} via ${info.provider}]:`, info.messageId);
 
     res.json({
       success: true,
       message: `${reportTitle} report email successfully sent to ${toEmail}!`,
       messageId: info.messageId,
-      previewUrl: previewUrl || undefined,
+      provider: info.provider,
     });
   } catch (error) {
     next(error);
