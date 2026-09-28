@@ -44,6 +44,14 @@ export const Expenses = () => {
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
   const fileInputRef = useRef(null);
   const templateMenuRef = useRef(null);
+  const debounceTimers = useRef({});
+
+  // Cleanup debounce timers on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(debounceTimers.current).forEach((timer) => clearTimeout(timer));
+    };
+  }, []);
 
   // Close template menu on outside click
   useEffect(() => {
@@ -144,8 +152,8 @@ export const Expenses = () => {
     }
   };
 
-  // Handle cell edit
-  const handleCellChange = async (rowId, field, value) => {
+  // Handle cell edit with debounce to prevent race conditions on rapid typing
+  const handleCellChange = (rowId, field, value) => {
     if (!canEdit) {
       notifyLocked('edit expense record');
       return;
@@ -160,16 +168,26 @@ export const Expenses = () => {
       cleanValue = str;
     }
 
+    // 1. Instantly update UI for responsive typing
     setRows((prev) =>
       prev.map((r) => (r.id === rowId ? { ...r, [field]: cleanValue } : r))
     );
 
-    try {
-      await apiClient.patch(ENDPOINTS.HUB_EXPENSES.UPDATE(rowId), { [field]: cleanValue });
-    } catch (error) {
-      toast.error(error.message || 'Failed to update expense');
-      fetchHubExpenses();
+    // 2. Clear previous pending debounce timer for this field & row
+    const timerKey = `${rowId}_${field}`;
+    if (debounceTimers.current[timerKey]) {
+      clearTimeout(debounceTimers.current[timerKey]);
     }
+
+    // 3. Debounce PATCH call so only final typed value is saved to MongoDB
+    debounceTimers.current[timerKey] = setTimeout(async () => {
+      try {
+        await apiClient.patch(ENDPOINTS.HUB_EXPENSES.UPDATE(rowId), { [field]: cleanValue });
+      } catch (error) {
+        toast.error(error.message || 'Failed to update expense');
+        fetchHubExpenses();
+      }
+    }, 400);
   };
 
   // Add a new expense

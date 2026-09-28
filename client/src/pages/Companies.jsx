@@ -526,6 +526,7 @@ export const Companies = () => {
                 { value: 'xpressbees', label: 'XpressBees Format (Delivered + Pickup)' },
                 { value: 'shadowfax', label: 'Shadowfax Format (Primary + Clubbed)' },
                 { value: 'valmo', label: 'Valmo Format' },
+                { value: 'cqa', label: 'CQA (Franchise Payment Only - No Rider Payout)' },
               ]}
             />
             <div className="flex items-center gap-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">

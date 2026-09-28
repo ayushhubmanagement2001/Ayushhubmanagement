@@ -51,6 +51,14 @@ export const Advanced = () => {
   const fileInputRef = useRef(null);
   const exportMenuRef = useRef(null);
   const sampleSheetMenuRef = useRef(null);
+  const debounceTimers = useRef({});
+
+  // Cleanup debounce timers on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(debounceTimers.current).forEach((timer) => clearTimeout(timer));
+    };
+  }, []);
 
   // New Record Form State for Add Modal
   const [newForm, setNewForm] = useState({
@@ -174,8 +182,8 @@ export const Advanced = () => {
     );
   };
 
-  // Handle cell edit in-place
-  const handleCellChange = async (rowId, field, value) => {
+  // Handle cell edit in-place with debounce
+  const handleCellChange = (rowId, field, value) => {
     if (!canEdit) {
       notifyLocked('edit advance record');
       return;
@@ -192,6 +200,7 @@ export const Advanced = () => {
 
     const payload = { [field]: cleanValue };
 
+    // 1. Instantly update UI for responsive typing
     setRows((prev) =>
       prev.map((r) => {
         if (r.id !== rowId) return r;
@@ -206,12 +215,21 @@ export const Advanced = () => {
       })
     );
 
-    try {
-      await apiClient.patch(ENDPOINTS.ADVANCES.UPDATE(rowId), payload);
-    } catch (error) {
-      toast.error(error.message || 'Failed to update advance record');
-      fetchAdvances();
+    // 2. Clear previous pending debounce timer for this field & row
+    const timerKey = `${rowId}_${field}`;
+    if (debounceTimers.current[timerKey]) {
+      clearTimeout(debounceTimers.current[timerKey]);
     }
+
+    // 3. Debounce PATCH call so only final typed value is saved to database
+    debounceTimers.current[timerKey] = setTimeout(async () => {
+      try {
+        await apiClient.patch(ENDPOINTS.ADVANCES.UPDATE(rowId), payload);
+      } catch (error) {
+        toast.error(error.message || 'Failed to update advance record');
+        fetchAdvances();
+      }
+    }, 400);
   };
 
   // Handle Create Advance from Modal

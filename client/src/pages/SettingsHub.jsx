@@ -97,6 +97,7 @@ export const SettingsHub = () => {
     if (!activeCompany) return 'shadowfax';
     const sType = (activeCompany.sheetType || '').toLowerCase();
     const cName = (activeCompany.name || '').toLowerCase();
+    if (sType === 'cqa' || cName.includes('cqa')) return 'cqa';
     if (sType === 'valmo' || cName.includes('valmo')) return 'valmo';
     if (sType === 'xpressbees' || cName.includes('xpress')) return 'xpressbees';
     return 'shadowfax';
@@ -712,10 +713,14 @@ export const SettingsHub = () => {
         };
       });
 
+    const isCqa = (editFormData.sheetType || '').toLowerCase() === 'cqa';
     const success = await updateCompany(selectedModalCompany.id || selectedModalCompany._id, {
       name: editFormData.name.trim(),
       status: editFormData.status || 'Active',
       sheetType: editFormData.sheetType || 'shadowfax',
+      hasRiderPayout: !isCqa,
+      hasTransactionLedger: !isCqa,
+      trackRiderDetails: !isCqa,
       riders: cleanRiders,
     });
 
@@ -736,11 +741,15 @@ export const SettingsHub = () => {
       return;
     }
 
+    const isCqa = (addCompanyFormData.sheetType || '').toLowerCase() === 'cqa';
     const payload = {
       name: addCompanyFormData.name.trim(),
       code: addCompanyFormData.code.trim() || undefined,
       sheetType: addCompanyFormData.sheetType || 'xpressbees',
       status: addCompanyFormData.status || 'Active',
+      hasRiderPayout: !isCqa,
+      hasTransactionLedger: !isCqa,
+      trackRiderDetails: !isCqa,
       riders: [],
     };
 
@@ -839,6 +848,7 @@ export const SettingsHub = () => {
                 </span>
               </div>
               <div className="text-[10px] text-gray-500 font-medium">
+                {companyFormat === 'cqa' && 'CQA Format (Franchise Payment Only - No Rider Payout)'}
                 {companyFormat === 'shadowfax' && 'Shadowfax Format (Primary + Clubbed + Rate)'}
                 {companyFormat === 'xpressbees' && 'XpressBees Format (Delivered + Pickup + Rate)'}
                 {companyFormat === 'valmo' && 'Valmo Format (Combined Rider Name/ID + Rate)'}
@@ -860,132 +870,154 @@ export const SettingsHub = () => {
 
       {/* DYNAMIC RIDERS LIST & TABLE CONTAINER (FULL HEIGHT WITH SCROLLING BODY) */}
       <div className="bg-white border border-gray-200/80 shadow-xs rounded-xl p-2.5 sm:p-3 flex-1 min-h-0 flex flex-col gap-2">
-        {/* Section Header with Action Buttons */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="text-xs sm:text-sm font-bold text-gray-900">
-              Riders List for {activeCompany?.name || 'Selected Company'}
-            </span>
-            <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-800">
-              {currentRiders.length} {currentRiders.length === 1 ? 'Rider' : 'Riders'}
-            </span>
-          </div>
-
-            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap self-start md:self-auto">
-              {/* Search Rider Input */}
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search riders..."
-                  value={riderSearchQuery}
-                  onChange={(e) => setRiderSearchQuery(e.target.value)}
-                  className="pl-7 pr-2.5 py-1 text-xs bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-500 font-medium text-gray-900 w-32 sm:w-44 shadow-2xs"
-                />
-              </div>
-
-              {/* Download Sample File Dropdown */}
-              <SampleTemplateDropdown
-                currentCompany={activeCompany}
-                companies={companies}
-                onDownload={handleDownloadSampleTemplate}
-                label="Sample File"
-              />
-
-              {/* Upload File Button */}
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                title="Upload Excel or CSV file to import riders"
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-colors cursor-pointer shadow-2xs"
-              >
-                <Upload className="w-3.5 h-3.5 text-indigo-700" />
-                <span>Upload File</span>
-              </button>
-
-              {/* Export Dropdown Button */}
-              <div className="relative" ref={exportMenuRef}>
-                <button
-                  type="button"
-                  onClick={() => setIsExportMenuOpen((prev) => !prev)}
-                  title="Export riders list to Excel or CSV"
-                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] hover:bg-[#D1FAE5] transition-colors cursor-pointer shadow-2xs"
-                >
-                  <Download className="w-3.5 h-3.5 text-[#059669]" />
-                  <span>Export</span>
-                  <ChevronDown className="w-3 h-3 text-[#059669]" />
-                </button>
-
-                {isExportMenuOpen && (
-                  <div className="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-xl shadow-lg z-30 py-1 overflow-hidden animate-in fade-in slide-in-from-top-1">
-                    <button
-                      type="button"
-                      onClick={() => handleExportRiders('xlsx')}
-                      className="w-full text-left px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2 cursor-pointer"
-                    >
-                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                      <span>Export to Excel (.xlsx)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleExportRiders('csv')}
-                      className="w-full text-left px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2 cursor-pointer"
-                    >
-                      <span className="w-2 h-2 rounded-full bg-blue-500" />
-                      <span>Export to CSV (.csv)</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Add Rider Box Button */}
-              <button
-                type="button"
-                onClick={handleAddRiderRow}
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer shadow-2xs"
-              >
-                <Plus className="w-3.5 h-3.5 text-emerald-700" />
-                <span>Add Rider Box</span>
-              </button>
-
-              {/* Primary Save Rider Settings Button in Toolbar */}
-              <ProtectedAction actionName="save rider settings">
-                <button
-                  type="button"
-                  onClick={handleSaveRiders}
-                  disabled={isSaving}
-                  className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 bg-[#E53935] text-white hover:bg-[#D32F2F] shadow-sm hover:shadow cursor-pointer disabled:opacity-60"
-                  title="Save rider configuration to database"
-                >
-                  <Save className="w-3.5 h-3.5" />
-                  <span>{isSaving ? 'Saving...' : 'Save Rider Settings'}</span>
-                </button>
-              </ProtectedAction>
+        {companyFormat === 'cqa' ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-gray-50/50 rounded-xl border border-dashed border-gray-200 my-auto">
+            <div className="w-14 h-14 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 mb-3 shadow-2xs">
+              <Building2 className="w-7 h-7" />
             </div>
+            <h3 className="text-sm sm:text-base font-bold text-gray-900 mb-1">
+              CQA operates on a Franchise Payment Model
+            </h3>
+            <p className="text-xs text-gray-500 max-w-md mb-4 leading-relaxed">
+              Rider payouts and individual rider rate cards are not applicable for CQA. Franchise payments, rider advances, loss & recovery, and hub expenses are actively tracked.
+            </p>
+            <a
+              href="/franchise-payments"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold bg-[#E53935] text-white hover:bg-[#D32F2F] shadow-2xs transition-colors"
+            >
+              Go to Franchise Payments
+            </a>
           </div>
+        ) : (
+          <>
+            {/* Section Header with Action Buttons */}
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs sm:text-sm font-bold text-gray-900">
+                  Riders List for {activeCompany?.name || 'Selected Company'}
+                </span>
+                <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-red-100 text-red-800">
+                  {currentRiders.length} {currentRiders.length === 1 ? 'Rider' : 'Riders'}
+                </span>
+              </div>
 
-          {/* COMMON TABLE WITH BUILT-IN PAGINATION, SELECTION & ACTIONS */}
-          <CommonTable
-            columns={tableColumns}
-            data={displayedRiders}
-            onCellChange={handleCellChange}
-            onDeleteRow={handleDeleteRow}
-            canEdit={canEdit}
-            showFooterSummary={true}
-            footerSummaryData={footerSummaryData}
-            emptyMessage={`No riders configured for ${activeCompany?.name || 'Company'}. Click "+ Add Rider Box" or "Upload File" to start.`}
-            initialPageSize={10}
-            enableSelection={true}
-            selectedRowIds={selectedRiderIds}
-            onSelectRow={(id) => {
-              setSelectedRiderIds((prev) =>
-                prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-              );
-            }}
-            onSelectAll={(ids) => setSelectedRiderIds(ids)}
-            onBulkDelete={handleBulkDelete}
-          />
-        </div>
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap self-start md:self-auto">
+                {/* Search Rider Input */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search riders..."
+                    value={riderSearchQuery}
+                    onChange={(e) => setRiderSearchQuery(e.target.value)}
+                    className="pl-7 pr-2.5 py-1 text-xs bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-500 font-medium text-gray-900 w-32 sm:w-44 shadow-2xs"
+                  />
+                </div>
+
+                {/* Download Sample File Dropdown */}
+                <SampleTemplateDropdown
+                  currentCompany={activeCompany}
+                  companies={companies}
+                  onDownload={handleDownloadSampleTemplate}
+                  label="Sample File"
+                />
+
+                {/* Upload File Button */}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Upload Excel or CSV file to import riders"
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-colors cursor-pointer shadow-2xs"
+                >
+                  <Upload className="w-3.5 h-3.5 text-indigo-700" />
+                  <span>Upload File</span>
+                </button>
+
+                {/* Export Dropdown Button */}
+                <div className="relative" ref={exportMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsExportMenuOpen((prev) => !prev)}
+                    title="Export riders list to Excel or CSV"
+                    className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0] hover:bg-[#D1FAE5] transition-colors cursor-pointer shadow-2xs"
+                  >
+                    <Download className="w-3.5 h-3.5 text-[#059669]" />
+                    <span>Export</span>
+                    <ChevronDown className="w-3 h-3 text-[#059669]" />
+                  </button>
+
+                  {isExportMenuOpen && (
+                    <div className="absolute right-0 mt-1 w-44 bg-white border border-gray-200 rounded-xl shadow-lg z-30 py-1 overflow-hidden animate-in fade-in slide-in-from-top-1">
+                      <button
+                        type="button"
+                        onClick={() => handleExportRiders('xlsx')}
+                        className="w-full text-left px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        <span>Export to Excel (.xlsx)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleExportRiders('csv')}
+                        className="w-full text-left px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 flex items-center gap-2 cursor-pointer"
+                      >
+                        <span className="w-2 h-2 rounded-full bg-blue-500" />
+                        <span>Export to CSV (.csv)</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Add Rider Box Button */}
+                <button
+                  type="button"
+                  onClick={handleAddRiderRow}
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors cursor-pointer shadow-2xs"
+                >
+                  <Plus className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>Add Rider Box</span>
+                </button>
+
+                {/* Primary Save Rider Settings Button in Toolbar */}
+                <ProtectedAction actionName="save rider settings">
+                  <button
+                    type="button"
+                    onClick={handleSaveRiders}
+                    disabled={isSaving}
+                    className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 bg-[#E53935] text-white hover:bg-[#D32F2F] shadow-sm hover:shadow cursor-pointer disabled:opacity-60"
+                    title="Save rider configuration to database"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>{isSaving ? 'Saving...' : 'Save Rider Settings'}</span>
+                  </button>
+                </ProtectedAction>
+              </div>
+            </div>
+
+            {/* COMMON TABLE WITH BUILT-IN PAGINATION, SELECTION & ACTIONS */}
+            <CommonTable
+              columns={tableColumns}
+              data={displayedRiders}
+              onCellChange={handleCellChange}
+              onDeleteRow={handleDeleteRow}
+              canEdit={canEdit}
+              showFooterSummary={true}
+              footerSummaryData={footerSummaryData}
+              emptyMessage={`No riders configured for ${activeCompany?.name || 'Company'}. Click "+ Add Rider Box" or "Upload File" to start.`}
+              initialPageSize={10}
+              enableSelection={true}
+              selectedRowIds={selectedRiderIds}
+              onSelectRow={(id) => {
+                setSelectedRiderIds((prev) =>
+                  prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+                );
+              }}
+              onSelectAll={(ids) => setSelectedRiderIds(ids)}
+              onBulkDelete={handleBulkDelete}
+            />
+          </>
+        )}
+      </div>
 
       {/* VIEW ALL REGISTERED COMPANIES MODAL */}
       <Modal
@@ -1143,6 +1175,7 @@ export const SettingsHub = () => {
                 { value: 'xpressbees', label: 'XpressBees (Delivered + Pickup Total)' },
                 { value: 'valmo', label: 'Valmo (Standard Combined Format)' },
                 { value: 'shadowfax', label: 'Shadowfax (Primary + Clubbed)' },
+                { value: 'cqa', label: 'CQA (Franchise Payment Only - No Rider Payout)' },
               ]}
             />
             <Select
@@ -1192,6 +1225,7 @@ export const SettingsHub = () => {
                 { value: 'shadowfax', label: 'Shadowfax / Standard (Primary + Clubbed)' },
                 { value: 'xpressbees', label: 'XpressBees (Delivered + Pickup Total)' },
                 { value: 'valmo', label: 'Valmo (Standard Combined Format)' },
+                { value: 'cqa', label: 'CQA (Franchise Payment Only - No Rider Payout)' },
               ]}
             />
           </div>

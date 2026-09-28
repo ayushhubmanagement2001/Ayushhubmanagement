@@ -202,6 +202,11 @@ export const createRiderPayout = async (req, res, next) => {
     }
 
     const company = await Company.findById(companyId);
+    if (company && (company.trackRiderDetails === false || company.hasRiderPayout === false || (company.name || '').toLowerCase().includes('cqa') || company.sheetType === 'cqa')) {
+      res.status(400);
+      throw new Error(`Rider Payout is not applicable for ${company.name} (Franchise Payment only).`);
+    }
+
     let parsed = parseRiderIdentifier(riderId, riderName, riderCombined);
     let finalRiderName = parsed.riderName;
     let finalRiderId = parsed.riderId;
@@ -308,6 +313,11 @@ export const bulkImportRiderPayouts = async (req, res, next) => {
     }
 
     const company = await Company.findById(companyId);
+    if (company && (company.trackRiderDetails === false || company.hasRiderPayout === false || (company.name || '').toLowerCase().includes('cqa') || company.sheetType === 'cqa')) {
+      res.status(400);
+      throw new Error(`Rider Payout is not applicable for ${company.name} (Franchise Payment only).`);
+    }
+
     const shouldTrackRiders = company ? company.trackRiderDetails !== false : true;
 
     const companyRiders = company && Array.isArray(company.riders) ? company.riders : [];

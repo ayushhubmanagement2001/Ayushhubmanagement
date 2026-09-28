@@ -89,8 +89,17 @@ export const SampleTemplateDropdown = ({
     };
   }, [isOpen, updatePosition]);
 
-  const activeCompanies = companies.filter((c) => c.status === 'Active' || !c.status);
-  const activeCurrent = currentCompany || activeCompanies[0];
+  const activeCompanies = companies.filter(
+    (c) =>
+      (c.status === 'Active' || !c.status) &&
+      c.sheetType !== 'cqa' &&
+      c.hasRiderPayout !== false &&
+      !(c.name || '').toLowerCase().includes('cqa')
+  );
+  const activeCurrent =
+    currentCompany && currentCompany.sheetType !== 'cqa' && currentCompany.hasRiderPayout !== false
+      ? currentCompany
+      : activeCompanies[0];
 
   const handleDownload = (format, targetComp) => {
     setIsOpen(false);

@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Download,
   Upload,
@@ -11,6 +12,8 @@ import {
   FileSpreadsheet,
   Mail,
   Trash2,
+  Building2,
+  ArrowRight,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { CustomDropdown, Modal, Pagination, SampleTemplateDropdown, SendEmailModal, ConfirmationModal } from '../components/common';
@@ -52,6 +55,8 @@ export const Payments = () => {
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
 
+  const navigate = useNavigate();
+
   // Active companies & current company definition
   const activeCompanies = useMemo(() => {
     return (companies || []).filter((c) => c.status === 'Active');
@@ -60,6 +65,15 @@ export const Payments = () => {
   const currentCompany = useMemo(() => {
     return activeCompanies.find((c) => (c.id || c._id) === selectedCompanyFilter) || activeCompanies[0] || (companies || [])[0];
   }, [activeCompanies, selectedCompanyFilter, companies]);
+
+  const isCQA = useMemo(() => {
+    if (!currentCompany) return false;
+    return (
+      (currentCompany.name || '').toLowerCase().includes('cqa') ||
+      currentCompany.sheetType === 'cqa' ||
+      currentCompany.hasTransactionLedger === false
+    );
+  }, [currentCompany]);
 
   // Close export menu on outside click
   useEffect(() => {
@@ -75,6 +89,11 @@ export const Payments = () => {
   // Fetch payments from backend
   const fetchPayments = useCallback(async () => {
     if (!isAuthenticated) return;
+    if (isCQA) {
+      setPayments([]);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       const params = {};
@@ -603,8 +622,31 @@ export const Payments = () => {
           </div>
         )}
 
-        <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
-          <table className="w-full text-left border-collapse text-xs">
+        {isCQA ? (
+          <div className="flex-1 bg-white p-8 flex flex-col items-center justify-center text-center">
+            <div className="w-16 h-16 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mb-3 ring-8 ring-purple-50/50">
+              <Receipt className="w-8 h-8" />
+            </div>
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800 mb-2">
+              Franchise Payment Model Only
+            </span>
+            <h3 className="text-base font-bold text-gray-900 mb-1.5">Transaction Ledger Not Applicable for CQA</h3>
+            <p className="text-xs text-gray-500 max-w-md leading-relaxed mb-5">
+              CQA does not disburse rider payouts. All transactions for CQA are logged as incoming settlements under Franchise Payments.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigate('/franchise-payments')}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-[#E53935] text-white hover:bg-red-700 transition-all shadow-xs cursor-pointer"
+            >
+              <span>Go to Franchise Payments</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
+              <table className="w-full text-left border-collapse text-xs">
             <thead className="sticky top-0 z-10 bg-[#F8FAFC]">
               <tr className="bg-[#F8FAFC] text-gray-900 font-bold border-b border-gray-200 select-none">
                 <th className="py-2 px-2 text-center w-8 whitespace-nowrap">
@@ -814,7 +856,9 @@ export const Payments = () => {
           }}
           totalItems={totalItems}
         />
-      </div>
+      </>
+    )}
+  </div>
 
       {/* Payment Receipt Modal */}
       {receiptModalPayment && (

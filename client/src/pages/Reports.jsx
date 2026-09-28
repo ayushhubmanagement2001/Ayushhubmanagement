@@ -180,17 +180,28 @@ export const Reports = () => {
     return (comp?.name || '').toLowerCase().includes('valmo') || (comp?.sheetType || '').toLowerCase() === 'valmo';
   }, [selectedCompanyFilter, activeCompanies]);
 
+  // Check if selected company is CQA (Franchise Only, ₹0 Rider Payout)
+  const isCQASelected = useMemo(() => {
+    if (!selectedCompanyFilter || selectedCompanyFilter === 'all') return false;
+    const comp = activeCompanies.find((c) => String(c.id || c._id) === String(selectedCompanyFilter));
+    return (
+      (comp?.name || '').toLowerCase().includes('cqa') ||
+      (comp?.sheetType || '').toLowerCase() === 'cqa' ||
+      comp?.hasRiderPayout === false
+    );
+  }, [selectedCompanyFilter, activeCompanies]);
+
   // 2. Total Rider Payout Cost (₹ from RiderPayout)
-  // For Valmo, riders pay the hub, so rider payout cost is 0.
+  // For Valmo & CQA, rider payout outflow is 0.
   const totalRiderPayout = useMemo(() => {
-    if (isValmoSelected) return 0;
+    if (isValmoSelected || isCQASelected) return 0;
     return riderPayouts.reduce((acc, row) => {
       const compName = (row.companyId?.name || '').toLowerCase();
       const sheetType = (row.companyId?.sheetType || '').toLowerCase();
-      if (compName.includes('valmo') || sheetType === 'valmo') return acc;
+      if (compName.includes('valmo') || sheetType === 'valmo' || compName.includes('cqa') || sheetType === 'cqa') return acc;
       return acc + (Number(row.finalPayout) || Number(row.payout) || 0);
     }, 0);
-  }, [riderPayouts, isValmoSelected]);
+  }, [riderPayouts, isValmoSelected, isCQASelected]);
 
   // 3. Total Hub Operating Expenses (₹ from HubExpense) - allocated per company when filtered
   const totalHubExpenses = useMemo(() => {
@@ -383,8 +394,12 @@ export const Reports = () => {
         (p) => (p.companyId?._id || p.companyId?.id || p.companyId) === compId
       );
 
+      const isCompValmo = (comp.name || '').toLowerCase().includes('valmo') || comp.sheetType === 'valmo';
+      const isCompCQA = (comp.name || '').toLowerCase().includes('cqa') || comp.sheetType === 'cqa' || comp.hasRiderPayout === false;
       const revenue = compPayments.reduce((s, p) => s + (Number(p.amount) || Number(p.finalPayable) || 0), 0);
-      const riderPayout = compPayouts.reduce((s, p) => s + (Number(p.finalPayout) || Number(p.payout) || 0), 0);
+      const riderPayout = (isCompValmo || isCompCQA)
+        ? 0
+        : compPayouts.reduce((s, p) => s + (Number(p.finalPayout) || Number(p.payout) || 0), 0);
       const deliveries = compPayouts.reduce((s, p) => s + (Number(p.deliveredPickupTotal) || Number(p.delivered) || 0), 0);
       // Filter-wise unrecovered loss: direct company loss + shared overhead share
       const directUnrecLoss = compLosses
@@ -942,6 +957,8 @@ export const Reports = () => {
           <div className="text-[10px] sm:text-[11px] font-medium text-gray-500 mt-0.5 flex items-center gap-1 truncate">
             {isValmoSelected ? (
               <span className="text-emerald-600 font-semibold">Valmo: Riders pay Hub (₹0 Outflow)</span>
+            ) : isCQASelected ? (
+              <span className="text-purple-600 font-semibold">CQA: Franchise Only (₹0 Outflow)</span>
             ) : (
               <>
                 <span className="text-purple-600 font-semibold">{riderPayouts.length} riders</span> paid
@@ -1227,66 +1244,78 @@ export const Reports = () => {
             <Badge variant="primary" size="sm">{riderPayouts.length} Records</Badge>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-gray-50/90 border-b border-gray-200 text-gray-500 font-bold uppercase text-[10px] tracking-wider">
-                  <th className="py-2 px-3">Rider Info</th>
-                  <th className="py-2 px-3">Month</th>
-                  <th className="py-2 px-3 text-center">Delivered</th>
-                  <th className="py-2 px-3 text-right">Rate Card</th>
-                  <th className="py-2 px-3 text-right">Base Payout</th>
-                  <th className="py-2 px-3 text-right">Advance Cut</th>
-                  <th className="py-2 px-3 text-right">Loss Cut</th>
-                  <th className="py-2 px-3 text-right">Final Payout</th>
-                  <th className="py-2 px-3 text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filterBySearch(riderPayouts, ['riderName', 'riderId', 'month', 'paymentStatus']).map((r, i) => (
-                  <tr key={r._id || i} className="hover:bg-gray-50/70 transition-colors">
-                    <td className="py-1.5 sm:py-2 px-3">
-                      <div className="font-semibold text-gray-900">{r.riderName || 'Unnamed'}</div>
-                      <div className="text-[9.5px] text-gray-400 font-medium">ID: {r.riderId || 'N/A'}</div>
-                    </td>
-                    <td className="py-1.5 sm:py-2 px-3 text-gray-600 font-medium">{r.month || selectedMonthFilter}</td>
-                    <td className="py-1.5 sm:py-2 px-3 text-center font-bold text-gray-800 tabular-nums">
-                      {r.deliveredPickupTotal || r.delivered || 0}
-                    </td>
-                    <td className="py-1.5 sm:py-2 px-3 text-right font-medium text-gray-600 tabular-nums">
-                      ₹{r.rateCard || 12}
-                    </td>
-                    <td className="py-1.5 sm:py-2 px-3 text-right font-medium text-gray-900 tabular-nums">
-                      {formatCurrency(r.payout)}
-                    </td>
-                    <td className="py-1.5 sm:py-2 px-3 text-right font-medium text-red-600 tabular-nums">
-                      -{formatCurrency(r.advance || 0)}
-                    </td>
-                    <td className="py-1.5 sm:py-2 px-3 text-right font-medium text-amber-600 tabular-nums">
-                      -{formatCurrency(r.loss || 0)}
-                    </td>
-                    <td className="py-1.5 sm:py-2 px-3 text-right font-bold text-[#E53935] tabular-nums">
-                      {formatCurrency(r.finalPayout)}
-                    </td>
-                    <td className="py-1.5 sm:py-2 px-3 text-center">
-                      <Badge
-                        variant={
-                          r.paymentStatus === 'PAID'
-                            ? 'success'
-                            : r.paymentStatus === 'HOLD'
-                            ? 'warning'
-                            : 'neutral'
-                        }
-                        size="sm"
-                      >
-                        {r.paymentStatus || 'PENDING'}
-                      </Badge>
-                    </td>
+          {isCQASelected ? (
+            <div className="py-16 px-4 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-2.5">
+                <Building2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-sm font-bold text-gray-900 mb-1">Rider Payout Not Applicable for CQA</h3>
+              <p className="text-xs text-gray-500 max-w-sm mx-auto">
+                CQA operates exclusively via Franchise Payments. Rider payouts are not tracked for this company.
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-gray-50/90 border-b border-gray-200 text-gray-500 font-bold uppercase text-[10px] tracking-wider">
+                    <th className="py-2 px-3">Rider Info</th>
+                    <th className="py-2 px-3">Month</th>
+                    <th className="py-2 px-3 text-center">Delivered</th>
+                    <th className="py-2 px-3 text-right">Rate Card</th>
+                    <th className="py-2 px-3 text-right">Base Payout</th>
+                    <th className="py-2 px-3 text-right">Advance Cut</th>
+                    <th className="py-2 px-3 text-right">Loss Cut</th>
+                    <th className="py-2 px-3 text-right">Final Payout</th>
+                    <th className="py-2 px-3 text-center">Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filterBySearch(riderPayouts, ['riderName', 'riderId', 'month', 'paymentStatus']).map((r, i) => (
+                    <tr key={r._id || i} className="hover:bg-gray-50/70 transition-colors">
+                      <td className="py-1.5 sm:py-2 px-3">
+                        <div className="font-semibold text-gray-900">{r.riderName || 'Unnamed'}</div>
+                        <div className="text-[9.5px] text-gray-400 font-medium">ID: {r.riderId || 'N/A'}</div>
+                      </td>
+                      <td className="py-1.5 sm:py-2 px-3 text-gray-600 font-medium">{r.month || selectedMonthFilter}</td>
+                      <td className="py-1.5 sm:py-2 px-3 text-center font-bold text-gray-800 tabular-nums">
+                        {r.deliveredPickupTotal || r.delivered || 0}
+                      </td>
+                      <td className="py-1.5 sm:py-2 px-3 text-right font-medium text-gray-600 tabular-nums">
+                        ₹{r.rateCard || 12}
+                      </td>
+                      <td className="py-1.5 sm:py-2 px-3 text-right font-medium text-gray-900 tabular-nums">
+                        {formatCurrency(r.payout)}
+                      </td>
+                      <td className="py-1.5 sm:py-2 px-3 text-right font-medium text-red-600 tabular-nums">
+                        -{formatCurrency(r.advance || 0)}
+                      </td>
+                      <td className="py-1.5 sm:py-2 px-3 text-right font-medium text-amber-600 tabular-nums">
+                        -{formatCurrency(r.loss || 0)}
+                      </td>
+                      <td className="py-1.5 sm:py-2 px-3 text-right font-bold text-[#E53935] tabular-nums">
+                        {formatCurrency(r.finalPayout)}
+                      </td>
+                      <td className="py-1.5 sm:py-2 px-3 text-center">
+                        <Badge
+                          variant={
+                            r.paymentStatus === 'PAID'
+                              ? 'success'
+                              : r.paymentStatus === 'HOLD'
+                              ? 'warning'
+                              : 'neutral'
+                          }
+                          size="sm"
+                        >
+                          {r.paymentStatus || 'PENDING'}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

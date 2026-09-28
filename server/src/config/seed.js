@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import connectDB from './db.js';
 import User from '../modals/User.js';
+import Company from '../modals/Company.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -52,6 +53,53 @@ const seedInitialData = async ({ forceUpdate = false } = {}) => {
         console.log(`  -> Role: Super Administrator`);
       } else {
         console.log(`[Seeding Info]: Admin account '${adminEmail}' already exists in database.`);
+      }
+    }
+
+    // Seed or Ensure CQA Company exists (Franchise Payment, Rider Advance, Loss & Recovery, Hub Expenses, Reports)
+    const existingCQA = await Company.findOne({ name: { $regex: /^CQA$/i } });
+    if (!existingCQA) {
+      console.log(`[Seeding]: Creating CQA company...`);
+      const cqaCompany = new Company({
+        name: 'CQA',
+        code: 'COMP-CQA',
+        status: 'Active',
+        icon: 'Building2',
+        color: '#7C3AED',
+        trackRiderDetails: false,
+        sheetType: 'cqa',
+        hasRiderPayout: false,
+        hasTransactionLedger: false,
+        cycles: ['Cycle 1 (1st - 15th)', 'Cycle 2 (16th - End of Month)'],
+        riders: [],
+      });
+      await cqaCompany.save();
+      console.log(`[Seeding Success]: CQA company registered successfully!`);
+    } else {
+      let needsSave = false;
+      if (existingCQA.trackRiderDetails !== false) {
+        existingCQA.trackRiderDetails = false;
+        needsSave = true;
+      }
+      if (existingCQA.hasRiderPayout !== false) {
+        existingCQA.hasRiderPayout = false;
+        needsSave = true;
+      }
+      if (existingCQA.hasTransactionLedger !== false) {
+        existingCQA.hasTransactionLedger = false;
+        needsSave = true;
+      }
+      if (existingCQA.sheetType !== 'cqa') {
+        existingCQA.sheetType = 'cqa';
+        needsSave = true;
+      }
+      if (existingCQA.status !== 'Active') {
+        existingCQA.status = 'Active';
+        needsSave = true;
+      }
+      if (needsSave) {
+        await existingCQA.save();
+        console.log(`[Seeding Success]: CQA company configuration updated!`);
       }
     }
   } catch (error) {

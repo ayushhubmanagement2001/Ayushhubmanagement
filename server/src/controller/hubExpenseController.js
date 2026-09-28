@@ -106,23 +106,24 @@ export const bulkImportHubExpenses = async (req, res, next) => {
 // @access  Private
 export const updateHubExpense = async (req, res, next) => {
   try {
-    const expense = await HubExpense.findById(req.params.id);
-    if (!expense) {
+    const updateFields = {};
+    if (req.body.expenseName !== undefined) updateFields.expenseName = req.body.expenseName;
+    if (req.body.amount !== undefined) updateFields.amount = Number(req.body.amount) || 0;
+    if (req.body.date !== undefined) updateFields.date = req.body.date;
+    if (req.body.month !== undefined) updateFields.month = req.body.month;
+    if (req.body.companyId !== undefined) updateFields.companyId = req.body.companyId;
+    if (req.body.remark !== undefined) updateFields.remark = (req.body.remark || '').trim();
+    if (req.body.ayushRemark !== undefined) updateFields.remark = (req.body.ayushRemark || '').trim();
+
+    const updated = await HubExpense.findByIdAndUpdate(
+      req.params.id,
+      { $set: updateFields },
+      { new: true, runValidators: true }
+    ).populate('companyId', 'name code');
+
+    if (!updated) {
       res.status(404);
       throw new Error('Hub expense not found.');
-    }
-
-    if (req.body.expenseName !== undefined) expense.expenseName = req.body.expenseName;
-    if (req.body.amount !== undefined) expense.amount = Number(req.body.amount) || 0;
-    if (req.body.date !== undefined) expense.date = req.body.date;
-    if (req.body.month !== undefined) expense.month = req.body.month;
-    if (req.body.companyId !== undefined) expense.companyId = req.body.companyId;
-    if (req.body.remark !== undefined) expense.remark = (req.body.remark || '').trim();
-    if (req.body.ayushRemark !== undefined) expense.remark = (req.body.ayushRemark || '').trim();
-
-    const updated = await expense.save();
-    if (updated.companyId) {
-      await updated.populate('companyId', 'name code');
     }
 
     res.json({

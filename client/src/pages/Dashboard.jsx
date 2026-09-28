@@ -119,6 +119,17 @@ export const Dashboard = () => {
     return isValmoCompany(selectedCompanyFilter, companies);
   }, [selectedCompanyFilter, companies]);
 
+  // CQA check for currently selected filter (Franchise Only, ₹0 Rider Payout)
+  const isCQASelected = useMemo(() => {
+    if (!selectedCompanyFilter || selectedCompanyFilter === 'all') return false;
+    const comp = (companies || []).find((c) => String(c.id || c._id) === String(selectedCompanyFilter));
+    return (
+      (comp?.name || '').toLowerCase().includes('cqa') ||
+      (comp?.sheetType || '').toLowerCase() === 'cqa' ||
+      comp?.hasRiderPayout === false
+    );
+  }, [selectedCompanyFilter, companies]);
+
   // Helper to determine if a rider record belongs to Valmo
   const isValmoRiderRecord = useCallback(
     (r) => {
@@ -265,15 +276,15 @@ export const Dashboard = () => {
   }, [filteredPayments]);
 
   // 2. Rider Payout Cost
-  // VALMO BUSINESS RULE: In Valmo, riders pay money to the hub (hub does not disburse payout to riders).
-  // Therefore, rider payout cost for Valmo is strictly 0 on the dashboard.
+  // VALMO & CQA BUSINESS RULE: Valmo riders pay money to the hub, and CQA has no rider payouts.
+  // Therefore, rider payout cost for Valmo and CQA is strictly 0 on the dashboard.
   const totalRiderPayout = useMemo(() => {
-    if (isValmoSelected) return 0;
+    if (isValmoSelected || isCQASelected) return 0;
     return filteredRiderPayouts.reduce((s, r) => {
       if (isValmoRiderRecord(r)) return s; // Exclude Valmo riders from payout expense
       return s + (Number(r.finalPayout) || Number(r.payout) || 0);
     }, 0);
-  }, [filteredRiderPayouts, isValmoSelected, isValmoRiderRecord]);
+  }, [filteredRiderPayouts, isValmoSelected, isCQASelected, isValmoRiderRecord]);
 
   // Amount collected from Valmo riders (riders pay the hub) - only counted when status is marked PAID
   const totalValmoRiderCollection = useMemo(() => {
@@ -527,7 +538,8 @@ export const Dashboard = () => {
       // Real rider payout (VALMO riders pay the hub, so payout is 0)
       const compRiders = riderPayouts.filter((p) => isCompanyMatch(p.companyId, compId));
       const isCompValmo = isValmoCompany(comp, activeCompanies);
-      const payout = isCompValmo
+      const isCompCQA = (comp.name || '').toLowerCase().includes('cqa') || comp.sheetType === 'cqa' || comp.hasRiderPayout === false;
+      const payout = (isCompValmo || isCompCQA)
         ? 0
         : compRiders.reduce((s, p) => s + (Number(p.finalPayout) || Number(p.payout) || 0), 0);
 
@@ -1296,7 +1308,7 @@ export const Dashboard = () => {
               </div>
 
               {/* Bars container */}
-              <div className="flex-1 flex items-end justify-around h-36 border-b border-slate-200/90 pb-0.5 z-10">
+              <div className="flex-1 min-w-0 flex items-end justify-between gap-0.5 h-36 border-b border-slate-200/90 pb-0.5 z-10 overflow-visible">
                 {chartBarsData.map((f, idx) => {
                   const isHovered = hoveredBarIndex === idx;
                   const isAnyHovered = hoveredBarIndex !== null;
@@ -1327,7 +1339,7 @@ export const Dashboard = () => {
                       key={f.companyId}
                       onMouseEnter={() => setHoveredBarIndex(idx)}
                       onMouseLeave={() => setHoveredBarIndex(null)}
-                      className={`relative flex flex-col items-center justify-end h-full px-1.5 sm:px-2 py-1 rounded-xl transition-all duration-200 cursor-pointer ${isHovered ? 'bg-slate-100/90 shadow-2xs' : 'hover:bg-slate-50/70'
+                      className={`relative min-w-0 flex-1 flex flex-col items-center justify-end h-full px-0.5 sm:px-1 py-1 rounded-xl transition-all duration-200 cursor-pointer ${isHovered ? 'bg-slate-100/90 shadow-2xs' : 'hover:bg-slate-50/70'
                         } ${isAnyHovered && !isHovered ? 'opacity-40' : 'opacity-100'}`}
                     >
                       {/* Floating Rich Tooltip */}
@@ -1406,9 +1418,9 @@ export const Dashboard = () => {
                       )}
 
                       {/* 3 Pillars (Revenue, Expense, Profit) */}
-                      <div className="flex items-end gap-1 sm:gap-1.5 h-28 pb-0.5 relative z-10">
+                      <div className="flex items-end gap-0.5 sm:gap-1.5 h-28 pb-0.5 relative z-10">
                         {/* Revenue Bar */}
-                        <div className="flex flex-col items-center justify-end h-full w-3 sm:w-3.5">
+                        <div className="flex flex-col items-center justify-end h-full w-1.5 sm:w-2">
                           {f.income > 0 && (
                             <span className="text-[7.5px] sm:text-[8px] font-extrabold text-slate-700 tracking-tighter mb-0.5 leading-none select-none tabular-nums whitespace-nowrap">
                               {formatCompactNumber(f.income)}
@@ -1425,7 +1437,7 @@ export const Dashboard = () => {
                         </div>
 
                         {/* Expense Bar */}
-                        <div className="flex flex-col items-center justify-end h-full w-3 sm:w-3.5">
+                        <div className="flex flex-col items-center justify-end h-full w-1.5 sm:w-2">
                           {expTotal > 0 && (
                             <span className="text-[7.5px] sm:text-[8px] font-extrabold text-slate-700 tracking-tighter mb-0.5 leading-none select-none tabular-nums whitespace-nowrap">
                               {formatCompactNumber(expTotal)}
@@ -1442,7 +1454,7 @@ export const Dashboard = () => {
                         </div>
 
                         {/* Profit Bar */}
-                        <div className="flex flex-col items-center justify-end h-full w-3 sm:w-3.5">
+                        <div className="flex flex-col items-center justify-end h-full w-1.5 sm:w-2">
                           {profVal > 0 ? (
                             <span className="text-[7.5px] sm:text-[8px] font-extrabold text-slate-700 tracking-tighter mb-0.5 leading-none select-none tabular-nums whitespace-nowrap">
                               {formatCompactNumber(profVal)}
@@ -1929,11 +1941,10 @@ export const Dashboard = () => {
                 </div>
               </div>
               <span
-                className={`px-2.5 py-0.5 rounded-full text-white text-[11px] font-black shadow-xs ${
-                  attentionItems.length > 0
-                    ? 'bg-gradient-to-r from-rose-500 to-red-600 shadow-rose-500/40 ring-2 ring-rose-300'
-                    : 'bg-emerald-500 shadow-emerald-500/30'
-                }`}
+                className={`px-2.5 py-0.5 rounded-full text-white text-[11px] font-black shadow-xs ${attentionItems.length > 0
+                  ? 'bg-gradient-to-r from-rose-500 to-red-600 shadow-rose-500/40 ring-2 ring-rose-300'
+                  : 'bg-emerald-500 shadow-emerald-500/30'
+                  }`}
               >
                 {attentionItems.length}
               </span>

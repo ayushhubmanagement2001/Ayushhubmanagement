@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Upload,
   Download,
@@ -10,6 +11,8 @@ import {
   Mail,
   Send,
   AtSign,
+  Building2,
+  ArrowRight,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { CommonTable, ConfirmationModal, SampleTemplateDropdown } from '../components/common';
@@ -76,10 +79,22 @@ export const Categories = () => {
     return companies.filter((c) => c.status === 'Active');
   }, [companies]);
 
+  const navigate = useNavigate();
+
   // Current company & format detection
   const currentCompany = useMemo(() => {
     return companies.find((c) => (c.id || c._id) === selectedCompanyFilter) || null;
   }, [companies, selectedCompanyFilter]);
+
+  const isCQA = useMemo(() => {
+    if (!currentCompany) return false;
+    return (
+      (currentCompany.name || '').toLowerCase().includes('cqa') ||
+      currentCompany.sheetType === 'cqa' ||
+      currentCompany.hasRiderPayout === false ||
+      currentCompany.trackRiderDetails === false
+    );
+  }, [currentCompany]);
 
   const companyFormat = useMemo(() => {
     if (!currentCompany) return 'shadowfax';
@@ -95,6 +110,11 @@ export const Categories = () => {
   // Fetch rows from backend
   const fetchPayouts = useCallback(async () => {
     if (!isAuthenticated) return;
+    if (isCQA) {
+      setRows([]);
+      setLoading(false);
+      return;
+    }
     try {
       setLoading(true);
       const params = {};
@@ -470,6 +490,10 @@ export const Categories = () => {
   // Add a new blank row with default values from Company Settings
   // Add a new blank row with all zeroes ready for user to fill
   const handleAddRow = async () => {
+    if (isCQA) {
+      toast.info('Rider payout is not applicable for CQA (Franchise Payment only).');
+      return;
+    }
     if (!canEdit) {
       notifyLocked('add a rider row');
       return;
@@ -796,6 +820,11 @@ export const Categories = () => {
 
   // Import Excel/CSV File (supports .xlsx, .xls, .csv with XLSX library)
   const handleFileUpload = (e) => {
+    if (isCQA) {
+      toast.info('Rider payout is not applicable for CQA (Franchise Payment only).');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
     if (!canEdit) {
       notifyLocked('upload excel data');
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -1163,26 +1192,49 @@ export const Categories = () => {
         </div>
       </div>
 
-      {/* Modern Data Table with Checkbox Selection and Protected Formulas */}
-      <CommonTable
-        columns={columns}
-        data={displayedRows}
-        onCellChange={handleCellChange}
-        onDeleteRow={handleDeleteRow}
-        canEdit={canEdit}
-        showFooterSummary={true}
-        footerSummaryData={footerSummaryData}
-        enableSelection={true}
-        selectedRowIds={selectedRowIds}
-        onSelectRow={(id) => {
-          setSelectedRowIds((prev) =>
-            prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-          );
-        }}
-        onSelectAll={(newIds) => setSelectedRowIds(newIds)}
-        onBulkDelete={handleTriggerBulkDelete}
-        emptyMessage="No payout records found for the selected company and month"
-      />
+      {/* Modern Data Table or CQA Non-applicable State */}
+      {isCQA ? (
+        <div className="flex-1 bg-white border border-gray-200/80 rounded-xl p-8 flex flex-col items-center justify-center text-center shadow-xs">
+          <div className="w-16 h-16 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mb-3 ring-8 ring-purple-50/50">
+            <Building2 className="w-8 h-8" />
+          </div>
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800 mb-2">
+            Franchise Payment Model Only
+          </span>
+          <h3 className="text-base font-bold text-gray-900 mb-1.5">Rider Payout is Not Applicable for CQA</h3>
+          <p className="text-xs text-gray-500 max-w-md leading-relaxed mb-5">
+            CQA operates directly through company-level Franchise Payments. Individual rider payouts are not required or tracked for this company.
+          </p>
+          <button
+            type="button"
+            onClick={() => navigate('/franchise-payments')}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-[#E53935] text-white hover:bg-red-700 transition-all shadow-xs cursor-pointer"
+          >
+            <span>Go to Franchise Payments</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      ) : (
+        <CommonTable
+          columns={columns}
+          data={displayedRows}
+          onCellChange={handleCellChange}
+          onDeleteRow={handleDeleteRow}
+          canEdit={canEdit}
+          showFooterSummary={true}
+          footerSummaryData={footerSummaryData}
+          enableSelection={true}
+          selectedRowIds={selectedRowIds}
+          onSelectRow={(id) => {
+            setSelectedRowIds((prev) =>
+              prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+            );
+          }}
+          onSelectAll={(newIds) => setSelectedRowIds(newIds)}
+          onBulkDelete={handleTriggerBulkDelete}
+          emptyMessage="No payout records found for the selected company and month"
+        />
+      )}
 
       {/* Send Email Modal */}
       {isEmailModalOpen && (

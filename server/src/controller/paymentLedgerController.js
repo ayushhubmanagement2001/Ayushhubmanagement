@@ -1,5 +1,6 @@
 import PaymentLedger from '../modals/PaymentLedger.js';
 import RiderPayout from '../modals/RiderPayout.js';
+import Company from '../modals/Company.js';
 
 // @desc    Get all payment ledger records filtered by company & month
 // @route   GET /api/payments
@@ -93,6 +94,12 @@ export const createPayment = async (req, res, next) => {
     if (!companyId || !month || !riderName) {
       res.status(400);
       throw new Error('Company, Month, and Rider Name are required.');
+    }
+
+    const company = await Company.findById(companyId);
+    if (company && (company.hasTransactionLedger === false || (company.name || '').toLowerCase().includes('cqa') || company.sheetType === 'cqa')) {
+      res.status(400);
+      throw new Error(`Transaction Ledger is not applicable for ${company.name} (Franchise Payment only).`);
     }
 
     const grossPayout = Number(payout) || 0;

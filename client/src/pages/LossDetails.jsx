@@ -46,6 +46,14 @@ export const LossDetails = () => {
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef(null);
   const exportMenuRef = useRef(null);
+  const debounceTimers = useRef({});
+
+  // Cleanup debounce timers on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(debounceTimers.current).forEach((timer) => clearTimeout(timer));
+    };
+  }, []);
 
   // Close export dropdown on outside click
   useEffect(() => {
@@ -161,8 +169,8 @@ export const LossDetails = () => {
     }
   };
 
-  // Handle cell edit
-  const handleCellChange = async (rowId, field, value) => {
+  // Handle cell edit with debounce
+  const handleCellChange = (rowId, field, value) => {
     if (!canEdit) {
       notifyLocked('edit loss record');
       return;
@@ -177,6 +185,7 @@ export const LossDetails = () => {
       cleanValue = str;
     }
 
+    // 1. Instantly update UI for responsive typing
     setRows((prev) =>
       prev.map((r) => {
         if (r.id !== rowId) return r;
@@ -192,12 +201,21 @@ export const LossDetails = () => {
       })
     );
 
-    try {
-      await apiClient.patch(ENDPOINTS.LOSS_DETAILS.UPDATE(rowId), { [field]: cleanValue });
-    } catch (error) {
-      toast.error(error.message || 'Failed to update loss record');
-      fetchLossDetails();
+    // 2. Clear previous pending debounce timer for this field & row
+    const timerKey = `${rowId}_${field}`;
+    if (debounceTimers.current[timerKey]) {
+      clearTimeout(debounceTimers.current[timerKey]);
     }
+
+    // 3. Debounce PATCH call so only final typed value is saved to database
+    debounceTimers.current[timerKey] = setTimeout(async () => {
+      try {
+        await apiClient.patch(ENDPOINTS.LOSS_DETAILS.UPDATE(rowId), { [field]: cleanValue });
+      } catch (error) {
+        toast.error(error.message || 'Failed to update loss record');
+        fetchLossDetails();
+      }
+    }, 400);
   };
 
   // Add a new loss entry

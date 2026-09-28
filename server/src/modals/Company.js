@@ -33,8 +33,16 @@ const companySchema = new mongoose.Schema(
     },
     sheetType: {
       type: String,
-      enum: ['shadowfax', 'xpressbees', 'valmo', 'standard'],
+      enum: ['shadowfax', 'xpressbees', 'valmo', 'standard', 'cqa'],
       default: 'shadowfax',
+    },
+    hasRiderPayout: {
+      type: Boolean,
+      default: true,
+    },
+    hasTransactionLedger: {
+      type: Boolean,
+      default: true,
     },
     riders: [
       {
