@@ -103,7 +103,7 @@ export const getCycleColor = (cycleName) => {
 };
 
 // Advanced Status-Styled Custom Dropdown Component
-const CycleDropdown = ({ value, onChange, options, disabled }) => {
+export const CycleDropdown = ({ value, onChange, options, disabled }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
   const color = getCycleColor(value);

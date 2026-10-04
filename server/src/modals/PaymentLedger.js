@@ -23,6 +23,17 @@ const paymentLedgerSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    financialYear: {
+      type: String,
+      default: '',
+      index: true,
+    },
+    cycle: {
+      type: String,
+      default: 'Cycle 1 (1st - 15th)',
+      trim: true,
+      index: true,
+    },
     riderName: {
       type: String,
       required: true,

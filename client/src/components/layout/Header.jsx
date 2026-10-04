@@ -85,6 +85,32 @@ export const Header = ({ onOpenMobileSidebar }) => {
     }));
   }, []);
 
+  // Check if selected company is Valmo
+  const isValmoCompany = useMemo(() => {
+    const selectedComp = activeCompanies.find((c) => (c.id || c._id) === selectedCompanyFilter);
+    if (!selectedComp) return false;
+    return (selectedComp.name || '').toLowerCase().includes('valmo') || selectedComp.sheetType === 'valmo';
+  }, [activeCompanies, selectedCompanyFilter]);
+
+  // Determine whether to show the Cycle filter dropdown in the header
+  const showHeaderCycleFilter = useMemo(() => {
+    if (isValmoCompany) return false;
+
+    const validPages = [
+      '/dashboard',
+      '/my-payment',
+      '/franchise-payments',
+      '/payment-payout',
+      '/payout-details',
+      '/rider-payout',
+      '/transactions',
+      '/transaction-ledger',
+      '/loss-details',
+      '/loss-and-recovery',
+    ];
+    return validPages.includes(location.pathname);
+  }, [location.pathname, isValmoCompany]);
+
   // Dynamic Payment Cycle / Week Options based on selected company
   const cycleOptions = useMemo(() => {
     const selectedComp = activeCompanies.find((c) => (c.id || c._id) === selectedCompanyFilter);
@@ -96,13 +122,13 @@ export const Header = ({ onOpenMobileSidebar }) => {
       const rawOptions = customCycles
         ? customCycles.map((cy) => ({ value: cy, label: cy }))
         : isValmo
-        ? [
+          ? [
             { value: 'Week 1', label: 'Week 1' },
             { value: 'Week 2', label: 'Week 2' },
             { value: 'Week 3', label: 'Week 3' },
             { value: 'Week 4', label: 'Week 4' },
           ]
-        : [
+          : [
             { value: 'Cycle 1 (1st - 15th)', label: 'Cycle 1 (1st - 15th)' },
             { value: 'Cycle 2 (16th - End of Month)', label: 'Cycle 2 (16th - End of Month)' },
           ];
@@ -115,13 +141,9 @@ export const Header = ({ onOpenMobileSidebar }) => {
 
     // Default when "All Franchise" is selected
     return [
-      { value: 'all', label: 'All Cycles / Weeks', icon: Clock },
+      { value: 'all', label: 'All Cycles', icon: Clock },
       { value: 'Cycle 1 (1st - 15th)', label: 'Cycle 1 (1st - 15th)', icon: Clock },
       { value: 'Cycle 2 (16th - End of Month)', label: 'Cycle 2 (16th - End of Month)', icon: Clock },
-      { value: 'Week 1', label: 'Week 1', icon: Clock },
-      { value: 'Week 2', label: 'Week 2', icon: Clock },
-      { value: 'Week 3', label: 'Week 3', icon: Clock },
-      { value: 'Week 4', label: 'Week 4', icon: Clock },
     ];
   }, [activeCompanies, selectedCompanyFilter]);
 
@@ -222,8 +244,8 @@ export const Header = ({ onOpenMobileSidebar }) => {
           />
         )}
 
-        {/* Global Payment Cycle / Week Filter Dropdown (Active on Dashboard & Franchise Payments) */}
-        {['/dashboard', '/my-payment', '/franchise-payments', '/payment-payout'].includes(location.pathname) && (
+        {/* Global Payment Cycle Filter Dropdown (Active on Dashboard, Franchise Payments, Rider Payout & Transaction Ledger - Hidden for Valmo on Rider Payout) */}
+        {showHeaderCycleFilter && (
           <CustomDropdown
             value={selectedCycleFilter || 'all'}
             onChange={setSelectedCycleFilter}
@@ -243,10 +265,9 @@ export const Header = ({ onOpenMobileSidebar }) => {
           title={isLocked ? 'Currently locked. Click to enable Edit Mode' : 'Currently in Edit Mode. Click to lock'}
           className={`
             flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold transition-all duration-200 border cursor-pointer select-none shrink-0 whitespace-nowrap
-            ${
-              isLocked
-                ? 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200 shadow-xs'
-                : 'bg-[#FFEBEE] text-[#E53935] border-[#FFCDD2] hover:bg-red-100 shadow-xs'
+            ${isLocked
+              ? 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200 shadow-xs'
+              : 'bg-[#FFEBEE] text-[#E53935] border-[#FFCDD2] hover:bg-red-100 shadow-xs'
             }
           `}
         >
@@ -274,9 +295,8 @@ export const Header = ({ onOpenMobileSidebar }) => {
           className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300 transition-all duration-200 shadow-2xs cursor-pointer select-none shrink-0 whitespace-nowrap"
         >
           <RotateCw
-            className={`w-3.5 h-3.5 text-gray-600 transition-transform duration-500 shrink-0 ${
-              isRefreshing ? 'animate-spin text-[#E53935]' : ''
-            }`}
+            className={`w-3.5 h-3.5 text-gray-600 transition-transform duration-500 shrink-0 ${isRefreshing ? 'animate-spin text-[#E53935]' : ''
+              }`}
           />
           <span className="hidden lg:inline">Refresh</span>
         </button>

@@ -16,7 +16,7 @@ const __dirname = path.dirname(__filename);
 // @access  Private
 export const getRiderPayouts = async (req, res, next) => {
   try {
-    const { companyId, month } = req.query;
+    const { companyId, month, financialYear, cycle } = req.query;
     const filter = {};
 
     if (companyId && companyId !== 'all') {
@@ -24,6 +24,17 @@ export const getRiderPayouts = async (req, res, next) => {
     }
     if (month && month !== 'all') {
       filter.month = month;
+    }
+    if (financialYear && financialYear !== 'all') {
+      filter.$or = [
+        { financialYear: financialYear },
+        { financialYear: { $exists: false } },
+        { financialYear: '' },
+      ];
+    }
+    if (cycle && cycle !== 'all') {
+      const escaped = cycle.trim().replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+      filter.cycle = new RegExp(escaped, 'i');
     }
 
     const payouts = await RiderPayout.find(filter)
@@ -182,6 +193,8 @@ export const createRiderPayout = async (req, res, next) => {
     const {
       companyId,
       month,
+      financialYear = '',
+      cycle,
       riderName,
       riderId,
       riderCombined,
@@ -206,6 +219,11 @@ export const createRiderPayout = async (req, res, next) => {
       res.status(400);
       throw new Error(`Rider Payout is not applicable for ${company.name} (Franchise Payment only).`);
     }
+
+    const defaultCycle = (company && (company.name || '').toLowerCase().includes('valmo'))
+      ? 'Week 1'
+      : (Array.isArray(company?.cycles) && company.cycles.length > 0 ? company.cycles[0] : 'Cycle 1 (1st - 15th)');
+    const finalCycle = (cycle || '').trim() || defaultCycle;
 
     let parsed = parseRiderIdentifier(riderId, riderName, riderCombined);
     let finalRiderName = parsed.riderName;
@@ -251,6 +269,8 @@ export const createRiderPayout = async (req, res, next) => {
     const payout = new RiderPayout({
       companyId,
       month,
+      financialYear: (financialYear || '').trim(),
+      cycle: finalCycle,
       riderName: finalRiderName,
       riderId: finalRiderId,
       delivered: Number(delivered) || 0,
@@ -276,6 +296,8 @@ export const createRiderPayout = async (req, res, next) => {
           payoutId: saved._id,
           companyId: saved.companyId,
           month: saved.month,
+          financialYear: saved.financialYear || '',
+          cycle: saved.cycle || finalCycle,
           riderName: saved.riderName,
           riderId: saved.riderId,
           payout: saved.payout,
@@ -305,7 +327,7 @@ export const createRiderPayout = async (req, res, next) => {
 // @access  Private
 export const bulkImportRiderPayouts = async (req, res, next) => {
   try {
-    const { companyId, month, rows } = req.body;
+    const { companyId, month, financialYear = '', cycle = '', rows } = req.body;
 
     if (!companyId || !month || !Array.isArray(rows) || rows.length === 0) {
       res.status(400);
@@ -319,8 +341,10 @@ export const bulkImportRiderPayouts = async (req, res, next) => {
     }
 
     const shouldTrackRiders = company ? company.trackRiderDetails !== false : true;
-
     const companyRiders = company && Array.isArray(company.riders) ? company.riders : [];
+    const defaultCycle = (company && (company.name || '').toLowerCase().includes('valmo'))
+      ? 'Week 1'
+      : (Array.isArray(company?.cycles) && company.cycles.length > 0 ? company.cycles[0] : 'Cycle 1 (1st - 15th)');
 
     const docsToInsert = rows.map((r, index) => {
       const rawStat = (r.paymentStatus || '').toString().trim().toUpperCase();
@@ -368,6 +392,8 @@ export const bulkImportRiderPayouts = async (req, res, next) => {
       const loss = Number(r.loss) || 0;
       const advance = Number(r.advance) || 0;
       const ayushRemark = (r.ayushRemark || '').toString().trim() || 'Enter remark';
+      const rowCycle = (r.cycle || cycle || '').trim() || defaultCycle;
+      const rowFinancialYear = (r.financialYear || financialYear || '').trim();
 
       let deliveredPickupTotal = 0;
       let payout = 0;
@@ -388,6 +414,8 @@ export const bulkImportRiderPayouts = async (req, res, next) => {
       return {
         companyId,
         month,
+        financialYear: rowFinancialYear,
+        cycle: rowCycle,
         riderName: inputName,
         riderId: inputId,
         deliveredPickupTotal,
@@ -443,6 +471,8 @@ export const updateRiderPayout = async (req, res, next) => {
       'paymentStatus',
       'ayushRemark',
       'month',
+      'financialYear',
+      'cycle',
       'companyId',
     ];
 
@@ -471,6 +501,8 @@ export const updateRiderPayout = async (req, res, next) => {
           payoutId: updated._id,
           companyId: updated.companyId,
           month: updated.month,
+          financialYear: updated.financialYear || '',
+          cycle: updated.cycle || 'Cycle 1 (1st - 15th)',
           riderName: updated.riderName,
           riderId: updated.riderId,
           payout: updated.payout,
@@ -560,7 +592,7 @@ export const createTransporter = async () => {
 
   if (smtpUser && smtpPass) {
     const cleanPass = smtpPass.replace(/\s+/g, '');
-    
+
     if (
       cachedTransporter &&
       cachedTransporter._user === smtpUser &&
@@ -826,12 +858,12 @@ export const sendPayoutEmail = async (req, res, next) => {
       html: htmlBody,
       attachments: attachmentBuffer
         ? [
-            {
-              filename: attachmentFilename,
-              content: attachmentBuffer,
-              contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            },
-          ]
+          {
+            filename: attachmentFilename,
+            content: attachmentBuffer,
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          },
+        ]
         : [],
     });
 

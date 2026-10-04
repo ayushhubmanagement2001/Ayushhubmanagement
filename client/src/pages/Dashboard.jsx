@@ -64,12 +64,19 @@ export const isValmoCompany = (companyObjOrId, companiesList = []) => {
 // Flexible cycle matching helper
 const isCycleMatch = (recordCycle, filterCycle) => {
   if (!filterCycle || filterCycle === 'all') return true;
-  if (!recordCycle) return false;
-  const rc = recordCycle.toLowerCase().trim();
-  const fc = filterCycle.toLowerCase().trim();
+  const fc = String(filterCycle).toLowerCase().trim();
+  if (!recordCycle) {
+    return fc.includes('cycle 1') || fc.includes('1st') || fc === 'c1';
+  }
+  const rc = String(recordCycle).toLowerCase().trim();
   if (rc === fc) return true;
-  if ((fc.includes('cycle 1') || fc.includes('1st')) && (rc.includes('cycle 1') || rc.includes('1st'))) return true;
-  if ((fc.includes('cycle 2') || fc.includes('16th')) && (rc.includes('cycle 2') || rc.includes('16th'))) return true;
+  const isFilterC1 = fc.includes('cycle 1') || fc.includes('1st') || fc === 'c1';
+  const isFilterC2 = fc.includes('cycle 2') || fc.includes('16th') || fc === 'c2';
+  const isRecordC1 = rc.includes('cycle 1') || rc.includes('1st') || rc === 'c1';
+  const isRecordC2 = rc.includes('cycle 2') || rc.includes('16th') || rc === 'c2';
+
+  if (isFilterC1 && isRecordC1) return true;
+  if (isFilterC2 && isRecordC2) return true;
   if (fc.includes('week 1') && rc.includes('week 1')) return true;
   if (fc.includes('week 2') && rc.includes('week 2')) return true;
   if (fc.includes('week 3') && rc.includes('week 3')) return true;
@@ -157,7 +164,7 @@ export const Dashboard = () => {
         advancesRes,
       ] = await Promise.allSettled([
         apiClient.get(ENDPOINTS.MY_PAYMENTS.GET_ALL, { params: paymentParams }),
-        apiClient.get(ENDPOINTS.RIDER_PAYOUTS.GET_ALL, { params: monthParams }),
+        apiClient.get(ENDPOINTS.RIDER_PAYOUTS.GET_ALL, { params: paymentParams }),
         apiClient.get(ENDPOINTS.HUB_EXPENSES.GET_ALL, { params: monthParams }),
         apiClient.get(ENDPOINTS.LOSS_DETAILS.GET_ALL, { params: paymentParams }),
         apiClient.get(ENDPOINTS.ADVANCES.GET_ALL),
@@ -211,12 +218,15 @@ export const Dashboard = () => {
     });
   }, [myPayments, selectedCompanyFilter, isAllCompanies, selectedCycleFilter, isAllCycles]);
 
-  // Filtered Rider Payouts
+  // Filtered Rider Payouts (filtered by company and cycle; Valmo has no cycle so always included)
   const filteredRiderPayouts = useMemo(() => {
     return riderPayouts.filter((r) => {
-      return isAllCompanies || isCompanyMatch(r.companyId, selectedCompanyFilter);
+      const matchComp = isAllCompanies || isCompanyMatch(r.companyId, selectedCompanyFilter);
+      const isValmo = isValmoRiderRecord(r);
+      const matchCycle = isValmo || isAllCycles || isCycleMatch(r.cycle, selectedCycleFilter);
+      return matchComp && matchCycle;
     });
-  }, [riderPayouts, selectedCompanyFilter, isAllCompanies]);
+  }, [riderPayouts, selectedCompanyFilter, isAllCompanies, selectedCycleFilter, isAllCycles, isValmoRiderRecord]);
 
   // Raw Total Loss across the entire hub
   const rawTotalLoss = useMemo(() => {
@@ -536,9 +546,13 @@ export const Dashboard = () => {
       const income = compPayments.reduce((s, p) => s + (Number(p.amount) || Number(p.finalPayable) || 0), 0);
 
       // Real rider payout (VALMO riders pay the hub, so payout is 0)
-      const compRiders = riderPayouts.filter((p) => isCompanyMatch(p.companyId, compId));
       const isCompValmo = isValmoCompany(comp, activeCompanies);
       const isCompCQA = (comp.name || '').toLowerCase().includes('cqa') || comp.sheetType === 'cqa' || comp.hasRiderPayout === false;
+      const compRiders = riderPayouts.filter((p) => {
+        const matchComp = isCompanyMatch(p.companyId, compId);
+        const matchCycle = isCompValmo || isAllCycles || isCycleMatch(p.cycle, selectedCycleFilter);
+        return matchComp && matchCycle;
+      });
       const payout = (isCompValmo || isCompCQA)
         ? 0
         : compRiders.reduce((s, p) => s + (Number(p.finalPayout) || Number(p.payout) || 0), 0);
@@ -736,7 +750,12 @@ export const Dashboard = () => {
 
     const rows = targetCompanies.map((c) => {
       const compId = c.id || c._id;
-      const compRiders = riderPayouts.filter((r) => isCompanyMatch(r.companyId, compId));
+      const isCompValmo = isValmoCompany(c, activeCompanies);
+      const compRiders = riderPayouts.filter((r) => {
+        const matchComp = isCompanyMatch(r.companyId, compId);
+        const matchCycle = isCompValmo || isAllCycles || isCycleMatch(r.cycle, selectedCycleFilter);
+        return matchComp && matchCycle;
+      });
 
       const delivered = compRiders.reduce((s, r) => s + (Number(r.delivered) || 0), 0);
       const pickup = compRiders.reduce((s, r) => s + (Number(r.pickup) || 0), 0);
@@ -776,7 +795,7 @@ export const Dashboard = () => {
     );
 
     return { rows, totals };
-  }, [activeCompanies, riderPayouts, isAllCompanies, selectedCompanyFilter]);
+  }, [activeCompanies, riderPayouts, isAllCompanies, selectedCompanyFilter, isAllCycles, selectedCycleFilter]);
 
   // -------------------------------------------------------------
   // ATTENTION REQUIRED ITEMS (3 Core Operational Alerts Only)
@@ -856,11 +875,15 @@ export const Dashboard = () => {
           <div className="min-w-0 flex-1">
             <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider truncate leading-tight flex items-center justify-between">
               <span>Rider Payout</span>
-              {isValmoSelected && (
+              {isValmoSelected ? (
                 <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded border border-emerald-200/80 leading-none">
                   Riders Pay Hub
                 </span>
-              )}
+              ) : !isAllCycles ? (
+                <span className="text-[9px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200/80 leading-none">
+                  {selectedCycleFilter.includes('Cycle 1') ? 'Cycle 1' : selectedCycleFilter.includes('Cycle 2') ? 'Cycle 2' : selectedCycleFilter}
+                </span>
+              ) : null}
             </div>
             <div className="text-lg font-bold text-gray-900 leading-tight mt-0.5 tracking-tight flex items-baseline gap-1.5">
               <span>{formatCurrency(totalRiderPayout)}</span>
@@ -873,7 +896,9 @@ export const Dashboard = () => {
             <div className="text-[10px] text-gray-400 truncate mt-0.5">
               {isValmoSelected
                 ? `${riderStats.total} Riders Total • ${riderStats.paid} Paid (${riderStats.pending} Pending)`
-                : `${riderStats.total} Riders Total (${riderStats.pending} Pending)`}
+                : !isAllCycles
+                  ? `${riderStats.total} Riders (${selectedCycleFilter.includes('Cycle 1') ? 'Cycle 1' : selectedCycleFilter.includes('Cycle 2') ? 'Cycle 2' : selectedCycleFilter}) • ${riderStats.pending} Pending`
+                  : `${riderStats.total} Riders Total (${riderStats.pending} Pending)`}
             </div>
           </div>
         </div>

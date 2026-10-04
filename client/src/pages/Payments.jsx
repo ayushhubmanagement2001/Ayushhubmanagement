@@ -14,9 +14,11 @@ import {
   Trash2,
   Building2,
   ArrowRight,
+  Clock,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { CustomDropdown, Modal, Pagination, SampleTemplateDropdown, SendEmailModal, ConfirmationModal } from '../components/common';
+import { getCycleOptions, getCycleColor } from './PaymentPayout';
 import { useCompany } from '../context/CompanyContext';
 import { useLock } from '../context/LockContext';
 import { useToast } from '../context/ToastContext';
@@ -27,8 +29,32 @@ import { downloadExcel, downloadCSV } from '../utils/exportUtils';
 import apiClient from '../api/apiClient';
 import { ENDPOINTS } from '../api/endpoints';
 
+// Cycle matching helper
+const isCycleMatch = (recordCycle, filterCycle) => {
+  if (!filterCycle || filterCycle === 'all') return true;
+  if (!recordCycle) return false;
+  const rc = recordCycle.toLowerCase().trim();
+  const fc = filterCycle.toLowerCase().trim();
+  if (rc === fc) return true;
+  if ((fc.includes('cycle 1') || fc.includes('1st')) && (rc.includes('cycle 1') || rc.includes('1st'))) return true;
+  if ((fc.includes('cycle 2') || fc.includes('16th')) && (rc.includes('cycle 2') || rc.includes('16th'))) return true;
+  if (fc.includes('week 1') && rc.includes('week 1')) return true;
+  if (fc.includes('week 2') && rc.includes('week 2')) return true;
+  if (fc.includes('week 3') && rc.includes('week 3')) return true;
+  if (fc.includes('week 4') && rc.includes('week 4')) return true;
+  return false;
+};
+
 export const Payments = () => {
-  const { companies, selectedCompanyFilter, selectedMonthFilter, selectedFinancialYear, fetchCompanies } = useCompany();
+  const {
+    companies,
+    selectedCompanyFilter,
+    selectedMonthFilter,
+    selectedFinancialYear,
+    selectedCycleFilter,
+    setSelectedCycleFilter,
+    fetchCompanies,
+  } = useCompany();
   const { canEdit, notifyLocked } = useLock();
   const { toast } = useToast();
   const { isAuthenticated } = useAuth();
@@ -75,6 +101,14 @@ export const Payments = () => {
     );
   }, [currentCompany]);
 
+  const isValmo = useMemo(() => {
+    if (!currentCompany) return false;
+    return (
+      (currentCompany.name || '').toLowerCase().includes('valmo') ||
+      currentCompany.sheetType === 'valmo'
+    );
+  }, [currentCompany]);
+
   // Close export menu on outside click
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -99,6 +133,8 @@ export const Payments = () => {
       const params = {};
       if (selectedCompanyFilter !== 'all') params.companyId = selectedCompanyFilter;
       if (selectedMonthFilter !== 'all') params.month = selectedMonthFilter;
+      if (selectedFinancialYear && selectedFinancialYear !== 'all') params.financialYear = selectedFinancialYear;
+      if (selectedCycleFilter && selectedCycleFilter !== 'all') params.cycle = selectedCycleFilter;
       if (selectedStatus !== 'ALL') params.status = selectedStatus;
 
       const res = await apiClient.get(ENDPOINTS.PAYMENTS.GET_ALL, { params });
@@ -106,6 +142,7 @@ export const Payments = () => {
         const formatted = res.data.map((p) => ({
           ...p,
           id: p._id || p.id,
+          cycle: p.cycle || 'Cycle 1 (1st - 15th)',
         }));
         setPayments(formatted);
       }
@@ -114,24 +151,27 @@ export const Payments = () => {
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated, selectedCompanyFilter, selectedMonthFilter, selectedStatus]);
+  }, [isAuthenticated, selectedCompanyFilter, selectedMonthFilter, selectedFinancialYear, selectedCycleFilter, selectedStatus, isCQA]);
 
   useEffect(() => {
     fetchPayments();
   }, [fetchPayments]);
 
-  // Filtered payments for search
+  // Filtered payments for search and cycle
   const filteredPayments = useMemo(() => {
     return payments.filter((p) => {
       const matchSearch = !searchQuery ||
         p.riderName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.riderId?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.transactionId?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        p.cycle?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         p.remark?.toLowerCase().includes(searchQuery.toLowerCase());
 
-      return matchSearch;
+      const matchCycle = !selectedCycleFilter || selectedCycleFilter === 'all' || isCycleMatch(p.cycle, selectedCycleFilter);
+
+      return matchSearch && matchCycle;
     });
-  }, [payments, searchQuery]);
+  }, [payments, searchQuery, selectedCycleFilter]);
 
   // Summary metrics calculation
   const summaryMetrics = useMemo(() => {
@@ -248,6 +288,7 @@ export const Payments = () => {
       'Rider Name',
       'Rider ID',
       'Company',
+      'Cycle',
       'Month',
       'Gross Payout',
       'Loss Deduction',
@@ -265,6 +306,7 @@ export const Payments = () => {
         p.riderName || '',
         p.riderId || '',
         compName,
+        p.cycle || 'Cycle 1 (1st - 15th)',
         p.month || selectedMonthFilter,
         Number(p.payout) || 0,
         Number(p.loss) || 0,
@@ -294,6 +336,7 @@ export const Payments = () => {
       'Rider Name',
       'Rider ID',
       'Company',
+      'Cycle',
       'Month',
       'Gross Payout',
       'Loss Deduction',
@@ -311,6 +354,7 @@ export const Payments = () => {
         p.riderName || '',
         p.riderId || '',
         compName,
+        p.cycle || 'Cycle 1 (1st - 15th)',
         p.month || selectedMonthFilter,
         Number(p.payout) || 0,
         Number(p.loss) || 0,
@@ -375,6 +419,7 @@ export const Payments = () => {
         const txnIdx = findColIdx(['transaction', 'txn', 'transaction id']);
         const riderNameIdx = findColIdx(['rider name', 'rider_name', 'name', 'rider']);
         const riderIdIdx = findColIdx(['rider id', 'rider_id', 'id', 'emp id', 'employee id', 'code']);
+        const cycleIdx = findColIdx(['cycle', 'payout cycle', 'week', 'payment cycle', 'cycle / week']);
         const payoutIdx = findColIdx(['gross', 'payout', 'gross payout']);
         const lossIdx = findColIdx(['loss', 'loss deduction']);
         const advanceIdx = findColIdx(['advance', 'advance deduction']);
@@ -385,6 +430,11 @@ export const Payments = () => {
           ? (companies[0]?.id || companies[0]?._id)
           : selectedCompanyFilter;
 
+        const availCycles = getCycleOptions(currentCompany?.name);
+        const defaultCycle = selectedCycleFilter && selectedCycleFilter !== 'all'
+          ? selectedCycleFilter
+          : (availCycles[0]?.value || 'Cycle 1 (1st - 15th)');
+
         let successCount = 0;
 
         for (let i = 1; i < rawJson.length; i++) {
@@ -393,6 +443,7 @@ export const Payments = () => {
 
           const rName = riderNameIdx >= 0 ? String(row[riderNameIdx] || '').trim() : '';
           const rId = riderIdIdx >= 0 ? String(row[riderIdIdx] || '').trim() : '';
+          const cVal = cycleIdx >= 0 && row[cycleIdx] ? String(row[cycleIdx]).trim() : defaultCycle;
           const p = payoutIdx >= 0 ? Number(row[payoutIdx]) || 0 : 0;
           const l = lossIdx >= 0 ? Number(row[lossIdx]) || 0 : 0;
           const a = advanceIdx >= 0 ? Number(row[advanceIdx]) || 0 : 0;
@@ -488,8 +539,8 @@ export const Payments = () => {
 
       {/* Action Bar */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 bg-white p-2 rounded-xl border border-gray-200/80 shadow-xs shrink-0">
-        {/* Search & Status Filter */}
-        <div className="flex items-center gap-2 flex-1 max-w-md">
+        {/* Search, Cycle & Status Filter */}
+        <div className="flex items-center gap-2 flex-1 max-w-xl">
           <div className="relative flex-1">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
@@ -504,6 +555,30 @@ export const Payments = () => {
             />
           </div>
 
+          {/* Quick In-Page Cycle Filter Dropdown (Shadowfax & XpressBees only) */}
+          {!isValmo && (
+            <div className="shrink-0 flex items-center gap-1">
+              <CustomDropdown
+                value={selectedCycleFilter || 'all'}
+                onChange={(val) => {
+                  setSelectedCycleFilter(val);
+                  setCurrentPage(1);
+                }}
+                options={[
+                  {
+                    value: 'all',
+                    label: 'All Cycles',
+                    icon: Clock,
+                  },
+                  ...getCycleOptions(currentCompany?.name).map((opt) => ({ ...opt, icon: Clock })),
+                ]}
+                icon={Clock}
+                size="sm"
+                minWidth="140px"
+              />
+            </div>
+          )}
+
           <CustomDropdown
             value={selectedStatus}
             onChange={(val) => {
@@ -512,7 +587,7 @@ export const Payments = () => {
             }}
             options={statusFilterOptions}
             size="sm"
-            minWidth="130px"
+            minWidth="120px"
           />
         </div>
 
@@ -647,218 +722,239 @@ export const Payments = () => {
           <>
             <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0">
               <table className="w-full text-left border-collapse text-xs">
-            <thead className="sticky top-0 z-10 bg-[#F8FAFC]">
-              <tr className="bg-[#F8FAFC] text-gray-900 font-bold border-b border-gray-200 select-none">
-                <th className="py-2 px-2 text-center w-8 whitespace-nowrap">
-                  <input
-                    type="checkbox"
-                    checked={allCurrentPageSelected && paginatedPayments.length > 0}
-                    onChange={handleHeaderSelectAll}
-                    disabled={!canEdit || paginatedPayments.length === 0}
-                    className="w-3.5 h-3.5 rounded border-gray-300 text-rose-600 focus:ring-rose-500 cursor-pointer disabled:cursor-not-allowed accent-rose-600"
-                    title="Select All on this page"
-                  />
-                </th>
-                <th className="py-2 px-3 whitespace-nowrap">Transaction & Date</th>
-                <th className="py-2 px-3 whitespace-nowrap">Rider Details</th>
-                <th className="py-2 px-3 whitespace-nowrap">Company</th>
-                <th className="py-2 px-3 text-right whitespace-nowrap">Gross Payout</th>
-                <th className="py-2 px-3 text-right text-rose-700 whitespace-nowrap">Deductions</th>
-                <th className="py-2 px-3 text-right text-emerald-900 bg-emerald-50/20 whitespace-nowrap">Final Disbursed</th>
-                <th className="py-2 px-3 text-center whitespace-nowrap">Status</th>
-                <th className="py-2 px-3 whitespace-nowrap">Remark</th>
-                <th className="py-2 px-2 text-center whitespace-nowrap">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={10} className="text-center py-12 text-gray-400">
-                    <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-primary-500 border-t-transparent mr-2" />
-                    Loading payment records...
-                  </td>
-                </tr>
-              ) : paginatedPayments.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="text-center py-16 text-gray-400">
-                    <div className="flex flex-col items-center justify-center gap-1.5">
-                      <Receipt className="w-8 h-8 text-gray-300 stroke-[1.25]" />
-                      <p className="font-semibold text-gray-700 text-xs">No payment records found</p>
-                      <p className="text-[11px] text-gray-400">Mark riders as "PAID" in Categories to record payments here.</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                paginatedPayments.map((p) => {
-                  const companyObj = companies.find((c) => c.id === p.companyId || c._id === p.companyId);
-                  const compName = companyObj?.name || p.companyName || 'Company';
-                  const isSelected = selectedRowIds.includes(p.id);
-
-                  const payoutVal = Number(p.payout) || 0;
-                  const lossVal = Number(p.loss) || 0;
-                  const advanceVal = Number(p.advance) || 0;
-                  const totalDed = lossVal + advanceVal;
-                  const finalVal = Number(p.finalPayout) || (payoutVal - totalDed);
-
-                  return (
-                    <tr key={p.id} className={`hover:bg-[#F8FAFC]/80 transition-colors ${isSelected ? 'bg-rose-50/40' : ''}`}>
-                      {/* Checkbox */}
-                      <td className="py-1 px-2 text-center whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleToggleRowSelect(p.id)}
-                          disabled={!canEdit}
-                          className="w-3.5 h-3.5 rounded border-gray-300 text-rose-600 focus:ring-rose-500 cursor-pointer disabled:cursor-not-allowed accent-rose-600"
-                        />
+                <thead className="sticky top-0 z-10 bg-[#F8FAFC]">
+                  <tr className="bg-[#F8FAFC] text-gray-900 font-bold border-b border-gray-200 select-none">
+                    <th className="py-2 px-2 text-center w-8 whitespace-nowrap">
+                      <input
+                        type="checkbox"
+                        checked={allCurrentPageSelected && paginatedPayments.length > 0}
+                        onChange={handleHeaderSelectAll}
+                        disabled={!canEdit || paginatedPayments.length === 0}
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-rose-600 focus:ring-rose-500 cursor-pointer disabled:cursor-not-allowed accent-rose-600"
+                        title="Select All on this page"
+                      />
+                    </th>
+                    <th className="py-2 px-3 whitespace-nowrap">Transaction & Date</th>
+                    <th className="py-2 px-3 whitespace-nowrap">Rider Details</th>
+                    <th className="py-2 px-3 whitespace-nowrap">Company</th>
+                    <th className="py-2 px-3 whitespace-nowrap">Cycle</th>
+                    <th className="py-2 px-3 text-right whitespace-nowrap">Gross Payout</th>
+                    <th className="py-2 px-3 text-right text-rose-700 whitespace-nowrap">Deductions</th>
+                    <th className="py-2 px-3 text-right text-emerald-900 bg-emerald-50/20 whitespace-nowrap">Final Disbursed</th>
+                    <th className="py-2 px-3 text-center whitespace-nowrap">Status</th>
+                    <th className="py-2 px-3 whitespace-nowrap">Remark</th>
+                    <th className="py-2 px-2 text-center whitespace-nowrap">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={11} className="text-center py-12 text-gray-400">
+                        <div className="inline-block animate-spin rounded-full h-5 w-5 border-2 border-primary-500 border-t-transparent mr-2" />
+                        Loading payment records...
                       </td>
-
-                      {/* Transaction ID & Date */}
-                      <td className="py-1.5 px-3">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono font-bold text-gray-900 text-[11px]">
-                            {p.transactionId || `TXN-${p.id.slice(-6).toUpperCase()}`}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 text-[10px] text-gray-400 mt-0.5 font-medium">
-                          <Calendar className="w-2.5 h-2.5 text-gray-400" />
-                          <span>{p.paymentDate || p.createdAt?.slice(0, 10) || '2026-09-18'}</span>
-                          <span>•</span>
-                          <span>{p.month || selectedMonthFilter}</span>
-                        </div>
-                      </td>
-
-                      {/* Rider Details */}
-                      <td className="py-1.5 px-3">
-                        <div className="font-bold text-gray-900 text-xs">
-                          {p.riderName || 'Sachin Sahu'}
-                        </div>
-                        <div className="text-[10px] font-mono text-gray-400 mt-0.5">
-                          ID: {p.riderId || '1018329'}
-                        </div>
-                      </td>
-
-                      {/* Company Name */}
-                      <td className="py-1.5 px-3">
-                        <span className="font-semibold text-gray-800 text-xs">{compName}</span>
-                      </td>
-
-                      {/* Gross Payout */}
-                      <td className="py-1.5 px-3 text-right font-bold text-gray-900 text-xs">
-                        ₹{payoutVal.toLocaleString('en-IN')}
-                      </td>
-
-                      {/* Deductions (Loss + Advance) */}
-                      <td className="py-1.5 px-3 text-right text-xs">
-                        <span className="font-bold text-rose-700">
-                          {totalDed > 0 ? `- ₹${totalDed.toLocaleString('en-IN')}` : '- ₹0'}
-                        </span>
-                        {(lossVal > 0 || advanceVal > 0) && (
-                          <div className="text-[9px] text-gray-400 mt-0.5">
-                            (L: {lossVal} | A: {advanceVal})
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Final Disbursed */}
-                      <td className="py-1.5 px-3 text-right font-black text-emerald-700 bg-emerald-50/20 text-xs">
-                        ₹{finalVal.toLocaleString('en-IN')}
-                      </td>
-
-                      {/* Status Selector Dropdown */}
-                      <td className="py-1.5 px-3 text-center">
-                        <select
-                          value={p.paymentStatus || 'Pending'}
-                          onChange={(e) => handleStatusChange(p.id, e.target.value)}
-                          className={`
-                            px-2 py-0.5 rounded-md text-[10px] font-bold border transition-colors outline-none cursor-pointer
-                            ${(p.paymentStatus || '').toUpperCase() === 'PAID'
-                              ? 'bg-[#DCFCE7] text-[#166534] border-[#86EFAC]'
-                              : (p.paymentStatus || '').toUpperCase() === 'HOLD'
-                              ? 'bg-[#FEE2E2] text-[#991B1B] border-[#FCA5A5]'
-                              : 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]'
-                            }
-                          `}
-                        >
-                          <option value="Paid">PAID</option>
-                          <option value="Pending">PENDING</option>
-                          <option value="Hold">HOLD</option>
-                        </select>
-                      </td>
-
-                      {/* Ayush Remark */}
-                      <td className="py-1.5 px-3 text-gray-600 text-xs">
-                        {p.remark || 'Direct Bank Disbursement'}
-                      </td>
-
-                      {/* Actions: Receipt + Delete */}
-                      <td className="py-1.5 px-2 text-center whitespace-nowrap">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() => setReceiptModalPayment(p)}
-                            className="p-1 rounded text-emerald-600 hover:bg-emerald-50 hover:text-emerald-800 transition-colors cursor-pointer inline-flex items-center justify-center"
-                            title="View Payment Receipt"
-                          >
-                            <FileCheck2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!canEdit) {
-                                notifyLocked('delete payment');
-                                return;
-                              }
-                              setPaymentToDelete(p);
-                            }}
-                            className="p-1 rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer inline-flex items-center justify-center"
-                            title="Delete Payment Record"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                    </tr>
+                  ) : paginatedPayments.length === 0 ? (
+                    <tr>
+                      <td colSpan={11} className="text-center py-16 text-gray-400">
+                        <div className="flex flex-col items-center justify-center gap-1.5">
+                          <Receipt className="w-8 h-8 text-gray-300 stroke-[1.25]" />
+                          <p className="font-semibold text-gray-700 text-xs">No payment records found</p>
+                          <p className="text-[11px] text-gray-400">Mark riders as "PAID" in Categories to record payments here.</p>
                         </div>
                       </td>
                     </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                  ) : (
+                    paginatedPayments.map((p) => {
+                      const companyObj = companies.find((c) => c.id === p.companyId || c._id === p.companyId);
+                      const compName = companyObj?.name || p.companyName || 'Company';
+                      const isSelected = selectedRowIds.includes(p.id);
 
-        {/* Footer Summary / Totals */}
-        <div className="bg-[#F8FAFC] border-t border-gray-200 px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
-          <div className="flex items-center gap-4 text-[11px] font-medium text-gray-600">
-            <span>Total Gross: <strong className="text-gray-900">₹{totalGrossPayout.toLocaleString('en-IN')}</strong></span>
-            <span>Total Deductions: <strong className="text-rose-700">- ₹{totalDeductions.toLocaleString('en-IN')}</strong></span>
-            <span>Total Disbursed: <strong className="text-emerald-700">₹{totalFinalDisbursed.toLocaleString('en-IN')}</strong></span>
-          </div>
+                      const payoutVal = Number(p.payout) || 0;
+                      const lossVal = Number(p.loss) || 0;
+                      const advanceVal = Number(p.advance) || 0;
+                      const totalDed = lossVal + advanceVal;
+                      const finalVal = Number(p.finalPayout) || (payoutVal - totalDed);
 
-          <div className="flex items-center gap-2 text-[11px]">
-            <span className="px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800">
-              {paidCount} Paid
-            </span>
-            <span className="px-2 py-0.5 rounded-full font-bold bg-amber-100 text-amber-800">
-              {pendingCount} Pending
-            </span>
-          </div>
-        </div>
+                      return (
+                        <tr key={p.id} className={`hover:bg-[#F8FAFC]/80 transition-colors ${isSelected ? 'bg-rose-50/40' : ''}`}>
+                          {/* Checkbox */}
+                          <td className="py-1 px-2 text-center whitespace-nowrap">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleRowSelect(p.id)}
+                              disabled={!canEdit}
+                              className="w-3.5 h-3.5 rounded border-gray-300 text-rose-600 focus:ring-rose-500 cursor-pointer disabled:cursor-not-allowed accent-rose-600"
+                            />
+                          </td>
 
-        {/* Pagination Controls */}
-        <Pagination
-          currentPage={safePage}
-          totalPages={totalPages}
-          onPageChange={setCurrentPage}
-          pageSize={pageSize}
-          onPageSizeChange={(newSize) => {
-            setPageSize(newSize);
-            setCurrentPage(1);
-          }}
-          totalItems={totalItems}
-        />
-      </>
-    )}
-  </div>
+                          {/* Transaction ID & Date */}
+                          <td className="py-1.5 px-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-bold text-gray-900 text-[11px]">
+                                {p.transactionId || `TXN-${p.id.slice(-6).toUpperCase()}`}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 text-[10px] text-gray-400 mt-0.5 font-medium">
+                              <Calendar className="w-2.5 h-2.5 text-gray-400" />
+                              <span>{p.paymentDate || p.createdAt?.slice(0, 10) || '2026-09-18'}</span>
+                              <span>•</span>
+                              <span>{p.month || selectedMonthFilter}</span>
+                            </div>
+                          </td>
+
+                          {/* Rider Details */}
+                          <td className="py-1.5 px-3">
+                            <div className="font-bold text-gray-900 text-xs">
+                              {p.riderName || 'Sachin Sahu'}
+                            </div>
+                            <div className="text-[10px] font-mono text-gray-400 mt-0.5">
+                              ID: {p.riderId || '1018329'}
+                            </div>
+                          </td>
+
+                          {/* Company Name */}
+                          <td className="py-1.5 px-3">
+                            <span className="font-semibold text-gray-800 text-xs">{compName}</span>
+                          </td>
+
+                          {/* Cycle Badge */}
+                          <td className="py-1.5 px-3 whitespace-nowrap">
+                            {(() => {
+                              const cycleInfo = getCycleColor(p.cycle || 'Cycle 1 (1st - 15th)');
+                              return (
+                                <span
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border shadow-2xs"
+                                  style={{
+                                    backgroundColor: cycleInfo.bg,
+                                    color: cycleInfo.color,
+                                    borderColor: cycleInfo.border,
+                                  }}
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: cycleInfo.dot }} />
+                                  <span>{p.cycle || 'Cycle 1 (1st - 15th)'}</span>
+                                </span>
+                              );
+                            })()}
+                          </td>
+
+                          {/* Gross Payout */}
+                          <td className="py-1.5 px-3 text-right font-bold text-gray-900 text-xs">
+                            ₹{payoutVal.toLocaleString('en-IN')}
+                          </td>
+
+                          {/* Deductions (Loss + Advance) */}
+                          <td className="py-1.5 px-3 text-right text-xs">
+                            <span className="font-bold text-rose-700">
+                              {totalDed > 0 ? `- ₹${totalDed.toLocaleString('en-IN')}` : '- ₹0'}
+                            </span>
+                            {(lossVal > 0 || advanceVal > 0) && (
+                              <div className="text-[9px] text-gray-400 mt-0.5">
+                                (L: {lossVal} | A: {advanceVal})
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Final Disbursed */}
+                          <td className="py-1.5 px-3 text-right font-black text-emerald-700 bg-emerald-50/20 text-xs">
+                            ₹{finalVal.toLocaleString('en-IN')}
+                          </td>
+
+                          {/* Status Selector Dropdown */}
+                          <td className="py-1.5 px-3 text-center">
+                            <select
+                              value={p.paymentStatus || 'Pending'}
+                              onChange={(e) => handleStatusChange(p.id, e.target.value)}
+                              className={`
+                            px-2 py-0.5 rounded-md text-[10px] font-bold border transition-colors outline-none cursor-pointer
+                            ${(p.paymentStatus || '').toUpperCase() === 'PAID'
+                                  ? 'bg-[#DCFCE7] text-[#166534] border-[#86EFAC]'
+                                  : (p.paymentStatus || '').toUpperCase() === 'HOLD'
+                                    ? 'bg-[#FEE2E2] text-[#991B1B] border-[#FCA5A5]'
+                                    : 'bg-[#FEF3C7] text-[#92400E] border-[#FDE68A]'
+                                }
+                          `}
+                            >
+                              <option value="Paid">PAID</option>
+                              <option value="Pending">PENDING</option>
+                              <option value="Hold">HOLD</option>
+                            </select>
+                          </td>
+
+                          {/* Ayush Remark */}
+                          <td className="py-1.5 px-3 text-gray-600 text-xs">
+                            {p.remark || 'Direct Bank Disbursement'}
+                          </td>
+
+                          {/* Actions: Receipt + Delete */}
+                          <td className="py-1.5 px-2 text-center whitespace-nowrap">
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setReceiptModalPayment(p)}
+                                className="p-1 rounded text-emerald-600 hover:bg-emerald-50 hover:text-emerald-800 transition-colors cursor-pointer inline-flex items-center justify-center"
+                                title="View Payment Receipt"
+                              >
+                                <FileCheck2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!canEdit) {
+                                    notifyLocked('delete payment');
+                                    return;
+                                  }
+                                  setPaymentToDelete(p);
+                                }}
+                                className="p-1 rounded text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer inline-flex items-center justify-center"
+                                title="Delete Payment Record"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer Summary / Totals */}
+            <div className="bg-[#F8FAFC] border-t border-gray-200 px-4 py-2 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
+              <div className="flex items-center gap-4 text-[11px] font-medium text-gray-600">
+                <span>Total Gross: <strong className="text-gray-900">₹{totalGrossPayout.toLocaleString('en-IN')}</strong></span>
+                <span>Total Deductions: <strong className="text-rose-700">- ₹{totalDeductions.toLocaleString('en-IN')}</strong></span>
+                <span>Total Disbursed: <strong className="text-emerald-700">₹{totalFinalDisbursed.toLocaleString('en-IN')}</strong></span>
+              </div>
+
+              <div className="flex items-center gap-2 text-[11px]">
+                <span className="px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800">
+                  {paidCount} Paid
+                </span>
+                <span className="px-2 py-0.5 rounded-full font-bold bg-amber-100 text-amber-800">
+                  {pendingCount} Pending
+                </span>
+              </div>
+            </div>
+
+            {/* Pagination Controls */}
+            <Pagination
+              currentPage={safePage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+              pageSize={pageSize}
+              onPageSizeChange={(newSize) => {
+                setPageSize(newSize);
+                setCurrentPage(1);
+              }}
+              totalItems={totalItems}
+            />
+          </>
+        )}
+      </div>
 
       {/* Payment Receipt Modal */}
       {receiptModalPayment && (
@@ -893,8 +989,8 @@ export const Payments = () => {
                 <span className="font-bold font-mono text-gray-900">{receiptModalPayment.riderId || '1018329'}</span>
               </div>
               <div>
-                <span className="text-gray-400 block text-[10px]">Month & FY</span>
-                <span className="font-semibold text-gray-800">{receiptModalPayment.month || selectedMonthFilter} {selectedFinancialYear}</span>
+                <span className="text-gray-400 block text-[10px]">Month & Cycle</span>
+                <span className="font-semibold text-gray-800">{receiptModalPayment.month || selectedMonthFilter} • {receiptModalPayment.cycle || 'Cycle 1'}</span>
               </div>
               <div>
                 <span className="text-gray-400 block text-[10px]">Gross Payout</span>
@@ -933,6 +1029,7 @@ export const Payments = () => {
                 : companies.find((c) => (c.id || c._id) === selectedCompanyFilter)?.name || 'Company',
           },
           { label: 'Period', value: `${selectedMonthFilter} (${selectedFinancialYear || 'FY'})` },
+          { label: 'Cycle Filter', value: selectedCycleFilter && selectedCycleFilter !== 'all' ? selectedCycleFilter : 'All Cycles' },
           { label: 'Status Filter', value: selectedStatus },
         ]}
         summaryCards={[
@@ -944,6 +1041,7 @@ export const Payments = () => {
           'Rider Name',
           'Rider ID',
           'Company',
+          'Cycle',
           'Month',
           'Gross Payout',
           'Loss Deduction',
@@ -963,6 +1061,7 @@ export const Payments = () => {
             p.riderName || '',
             p.riderId || '',
             compName,
+            p.cycle || 'Cycle 1 (1st - 15th)',
             p.month || selectedMonthFilter,
             Number(p.payout) || 0,
             Number(p.loss) || 0,

@@ -7,7 +7,7 @@ import Company from '../modals/Company.js';
 // @access  Private
 export const getPayments = async (req, res, next) => {
   try {
-    const { companyId, month, status } = req.query;
+    const { companyId, month, financialYear, cycle, status } = req.query;
     const filter = {};
 
     if (companyId && companyId !== 'all') {
@@ -15,6 +15,17 @@ export const getPayments = async (req, res, next) => {
     }
     if (month && month !== 'all') {
       filter.month = month;
+    }
+    if (financialYear && financialYear !== 'all') {
+      filter.$or = [
+        { financialYear: financialYear },
+        { financialYear: { $exists: false } },
+        { financialYear: '' },
+      ];
+    }
+    if (cycle && cycle !== 'all') {
+      const escaped = cycle.trim().replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&');
+      filter.cycle = new RegExp(escaped, 'i');
     }
     if (status && status !== 'ALL') {
       filter.paymentStatus = new RegExp(`^${status}$`, 'i');

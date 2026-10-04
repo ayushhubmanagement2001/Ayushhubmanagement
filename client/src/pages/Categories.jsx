@@ -13,9 +13,11 @@ import {
   AtSign,
   Building2,
   ArrowRight,
+  Clock,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { CommonTable, ConfirmationModal, SampleTemplateDropdown } from '../components/common';
+import { CommonTable, ConfirmationModal, SampleTemplateDropdown, CustomDropdown } from '../components/common';
+import { getCycleOptions, getCycleColor, CycleDropdown } from './PaymentPayout';
 import { useCompany } from '../context/CompanyContext';
 import { useLock } from '../context/LockContext';
 import { useToast } from '../context/ToastContext';
@@ -26,6 +28,22 @@ import { downloadCSV, downloadExcel, downloadSampleTemplate } from '../utils/exp
 import apiClient from '../api/apiClient';
 import { ENDPOINTS } from '../api/endpoints';
 
+// Cycle matching helper
+const isCycleMatch = (recordCycle, filterCycle) => {
+  if (!filterCycle || filterCycle === 'all') return true;
+  if (!recordCycle) return false;
+  const rc = recordCycle.toLowerCase().trim();
+  const fc = filterCycle.toLowerCase().trim();
+  if (rc === fc) return true;
+  if ((fc.includes('cycle 1') || fc.includes('1st')) && (rc.includes('cycle 1') || rc.includes('1st'))) return true;
+  if ((fc.includes('cycle 2') || fc.includes('16th')) && (rc.includes('cycle 2') || rc.includes('16th'))) return true;
+  if (fc.includes('week 1') && rc.includes('week 1')) return true;
+  if (fc.includes('week 2') && rc.includes('week 2')) return true;
+  if (fc.includes('week 3') && rc.includes('week 3')) return true;
+  if (fc.includes('week 4') && rc.includes('week 4')) return true;
+  return false;
+};
+
 export const Categories = () => {
   const {
     companies,
@@ -33,6 +51,8 @@ export const Categories = () => {
     setSelectedCompanyFilter,
     selectedMonthFilter,
     selectedFinancialYear,
+    selectedCycleFilter,
+    setSelectedCycleFilter,
     fetchCompanies,
   } = useCompany();
   const { canEdit, notifyLocked } = useLock();
@@ -120,6 +140,8 @@ export const Categories = () => {
       const params = {};
       if (selectedCompanyFilter !== 'all') params.companyId = selectedCompanyFilter;
       if (selectedMonthFilter !== 'all') params.month = selectedMonthFilter;
+      if (selectedFinancialYear && selectedFinancialYear !== 'all') params.financialYear = selectedFinancialYear;
+      if (selectedCycleFilter && selectedCycleFilter !== 'all') params.cycle = selectedCycleFilter;
 
       const res = await apiClient.get(ENDPOINTS.RIDER_PAYOUTS.GET_ALL, { params });
       if (res.success && Array.isArray(res.data)) {
@@ -132,6 +154,8 @@ export const Categories = () => {
           return {
             ...r,
             id: r._id || r.id,
+            cycle: r.cycle || 'Cycle 1 (1st - 15th)',
+            financialYear: r.financialYear || selectedFinancialYear || '',
             riderCombined: r.riderId && r.riderName ? `${r.riderId}-${r.riderName}` : (r.riderId || r.riderName || ''),
             advance: advVal,
             ayushRemark: remarkVal,
@@ -145,24 +169,27 @@ export const Categories = () => {
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated, selectedCompanyFilter, selectedMonthFilter]);
+  }, [isAuthenticated, selectedCompanyFilter, selectedMonthFilter, selectedFinancialYear, selectedCycleFilter, isCQA]);
 
   useEffect(() => {
     fetchPayouts();
     setSelectedRowIds([]);
   }, [fetchPayouts]);
 
-  // Filtered rows for search
+  // Filtered rows for search and cycle
   const displayedRows = useMemo(() => {
     return rows.filter((r) => {
-      const matchSearch = !searchQuery || 
+      const matchSearch = !searchQuery ||
         r.riderName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         r.riderId?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         r.riderCombined?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.cycle?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         r.ayushRemark?.toLowerCase().includes(searchQuery.toLowerCase());
-      return matchSearch;
+
+      const matchCycle = !selectedCycleFilter || selectedCycleFilter === 'all' || isCycleMatch(r.cycle, selectedCycleFilter);
+      return matchSearch && matchCycle;
     });
-  }, [rows, searchQuery]);
+  }, [rows, searchQuery, selectedCycleFilter]);
 
   // Universal Parser for Rider ID & Name (supports "ID - Name", "Name - ID", "ID / Name", "-ID", "Name-", "ID only", "Name only")
   const parseRiderIdentifier = (str) => {
@@ -473,6 +500,19 @@ export const Categories = () => {
       return;
     }
 
+    if (field === 'cycle') {
+      setRows((prev) =>
+        prev.map((row) => (row.id === rowId ? { ...row, cycle: value } : row))
+      );
+      apiClient.patch(ENDPOINTS.RIDER_PAYOUTS.UPDATE(rowId), { cycle: value }).then(() => {
+        toast.success(`Cycle updated to '${value}'!`);
+      }).catch((error) => {
+        toast.error(error.message || 'Failed to update cycle');
+        fetchPayouts();
+      });
+      return;
+    }
+
     const timerKey = `${rowId}_${field}`;
     if (debounceTimers.current[timerKey]) {
       clearTimeout(debounceTimers.current[timerKey]);
@@ -508,10 +548,18 @@ export const Categories = () => {
       return;
     }
 
+    const targetComp = companies.find((c) => (c.id || c._id) === targetCompanyId);
+    const availCycles = getCycleOptions(targetComp?.name);
+    const defaultCycle = selectedCycleFilter && selectedCycleFilter !== 'all'
+      ? selectedCycleFilter
+      : (availCycles[0]?.value || 'Cycle 1 (1st - 15th)');
+
     try {
       const newRowPayload = {
         companyId: targetCompanyId,
         month: selectedMonthFilter,
+        financialYear: selectedFinancialYear,
+        cycle: defaultCycle,
         riderName: '',
         riderId: '',
         delivered: 0,
@@ -530,6 +578,7 @@ export const Categories = () => {
         const created = {
           ...res.data,
           id: res.data._id,
+          cycle: res.data.cycle || defaultCycle,
           riderName: '',
           riderId: '',
           delivered: 0,
@@ -545,7 +594,7 @@ export const Categories = () => {
           ayushRemark: res.data.ayushRemark || 'Enter remark',
         };
         setRows((prev) => [created, ...prev]);
-        toast.success('New blank rider row added! You can now fill in rider details.');
+        toast.success(`New rider row added for ${defaultCycle}! You can now fill in rider details.`);
       }
     } catch (error) {
       toast.error(error.message || 'Failed to add rider row');
@@ -608,6 +657,7 @@ export const Categories = () => {
     if (companyFormat === 'valmo' || companyFormat === 'xpressbees') {
       return [
         'Rider Name/Rider ID',
+        companyFormat === 'valmo' ? 'Week' : 'Cycle',
         'Delievred',
         'Pickup',
         'Total',
@@ -623,6 +673,7 @@ export const Categories = () => {
     return [
       'Rider Name',
       'Rider Id',
+      'Cycle',
       'Delievred/Pickup Total',
       'Primary',
       'Clubbed',
@@ -649,6 +700,7 @@ export const Categories = () => {
       const loss = Number(r.loss) || 0;
       const advance = Number(r.advance) || 0;
       const finalPayout = payout - loss - advance;
+      const rowCycle = r.cycle || (companyFormat === 'valmo' ? 'Week 1' : 'Cycle 1 (1st - 15th)');
 
       if (companyFormat === 'valmo' || companyFormat === 'xpressbees') {
         const combinedRider = r.riderId && r.riderName
@@ -656,6 +708,7 @@ export const Categories = () => {
           : (r.riderCombined || (r.riderId ? `${r.riderId} ${r.riderName || ''}`.trim() : (r.riderName || '')));
         return [
           combinedRider,
+          rowCycle,
           deliv,
           pick,
           total,
@@ -672,6 +725,7 @@ export const Categories = () => {
       return [
         r.riderName || '',
         r.riderId || '',
+        rowCycle,
         total,
         p,
         c,
@@ -712,34 +766,34 @@ export const Categories = () => {
     toast.success(`Exported ${displayedRows.length} rider records to Excel (.xlsx)!`);
   };
 
-  // Download Sample Template (Clean Header ONLY, ZERO data rows, company-specific)
+  // Download Sample Template (Clean Header ONLY, ZERO data rows, NO cycle column in sheet - Cycle is managed by UI filter)
   const handleDownloadTemplate = (format = 'xlsx', targetCompany = null) => {
     const comp = targetCompany || currentCompany;
     const compName = (comp?.name || 'Company').trim().replace(/\s+/g, '_');
     const isValOrXp = (comp?.name || '').toLowerCase().includes('xpress') || (comp?.name || '').toLowerCase().includes('valmo');
-    
+
     const headers = isValOrXp
       ? [
-          'Rider Name/Rider ID',
-          'Delievred',
-          'Pickup',
-          'Rate',
-          'Loss',
-          'Advance',
-          'Payment Status',
-          'Ayush Remark',
-        ]
+        'Rider Name/Rider ID',
+        'Delievred',
+        'Pickup',
+        'Rate',
+        'Loss',
+        'Advance',
+        'Payment Status',
+        'Ayush Remark',
+      ]
       : [
-          'Rider Name',
-          'Rider ID',
-          'Primary',
-          'Clubbed',
-          'Rate',
-          'Loss',
-          'Advance',
-          'Payment Status',
-          'Ayush Remark',
-        ];
+        'Rider Name',
+        'Rider ID',
+        'Primary',
+        'Clubbed',
+        'Rate',
+        'Loss',
+        'Advance',
+        'Payment Status',
+        'Ayush Remark',
+      ];
 
     const filename = `Rider_Payout_Template_${compName}_${selectedMonthFilter}`;
     if (format === 'xlsx') {
@@ -879,6 +933,7 @@ export const Categories = () => {
 
         const riderNameIdx = findColIdx(['rider name', 'rider_name', 'name', 'rider']);
         const riderIdIdx = findColIdx(['rider id', 'rider_id', 'id', 'emp id', 'employee id', 'code']);
+        const cycleIdx = findColIdx(['cycle', 'payout cycle', 'week', 'payment cycle', 'cycle / week']);
         const primaryIdx = findColIdx(['primary', 'primary order']);
         const clubbedIdx = findColIdx(['clubbed', 'clubbed order']);
         const deliveredIdx = findColIdx(['delivered', 'delievred']);
@@ -889,6 +944,11 @@ export const Categories = () => {
         const advanceIdx = findColIdx(['advance', 'advance deduction']);
         const statusIdx = findColIdx(['status', 'payment status', 'payment stauts']);
         const remarkIdx = findColIdx(['remark', 'ayush remark', 'ayush_remark']);
+
+        const availCycles = getCycleOptions(currentCompany?.name);
+        const defaultCycle = selectedCycleFilter && selectedCycleFilter !== 'all'
+          ? selectedCycleFilter
+          : (availCycles[0]?.value || 'Cycle 1 (1st - 15th)');
 
         const importedRows = [];
         for (let i = 1; i < rawJson.length; i++) {
@@ -921,6 +981,7 @@ export const Categories = () => {
           const rawStatus = statusIdx >= 0 ? String(row[statusIdx] || '').trim().toUpperCase() : 'PENDING';
           const validStatus = ['PAID', 'HOLD', 'PENDING'].includes(rawStatus) ? rawStatus : 'PENDING';
           const ayushRemark = remarkIdx >= 0 && row[remarkIdx] ? String(row[remarkIdx]).trim() : 'Enter remark';
+          const rowCycle = cycleIdx >= 0 && row[cycleIdx] ? String(row[cycleIdx]).trim() : defaultCycle;
 
           // Match against Company Settings riders & auto-fetch missing Master Details (Rider ID, Name, Rate) ONLY
           const matchedConfig = findConfiguredRider(rawIdentifier || rName || rId);
@@ -935,6 +996,8 @@ export const Categories = () => {
           importedRows.push({
             riderName: rName,
             riderId: rId,
+            cycle: rowCycle,
+            financialYear: selectedFinancialYear,
             primary,
             clubbed,
             delivered,
@@ -951,6 +1014,8 @@ export const Categories = () => {
           const res = await apiClient.post(ENDPOINTS.RIDER_PAYOUTS.BULK_IMPORT, {
             companyId: targetCompanyId,
             month: selectedMonthFilter,
+            financialYear: selectedFinancialYear,
+            cycle: defaultCycle,
             rows: importedRows,
           });
 
@@ -974,7 +1039,7 @@ export const Categories = () => {
 
   // Table Columns (Dynamic according to company sheetType)
   const columns = useMemo(() => {
-    if (companyFormat === 'valmo' || companyFormat === 'xpressbees') {
+    if (companyFormat === 'valmo') {
       return [
         {
           key: 'riderCombined',
@@ -1021,9 +1086,104 @@ export const Categories = () => {
       ];
     }
 
+    if (companyFormat === 'xpressbees') {
+      return [
+        {
+          key: 'riderCombined',
+          label: 'Rider Name/Rider ID',
+          isEditable: true,
+          type: 'text',
+          minWidth: '175px',
+          valueGetter: (row) =>
+            row.riderCombined !== undefined
+              ? row.riderCombined
+              : (row.riderId && row.riderName ? `${row.riderId}-${row.riderName}` : (row.riderId || row.riderName || '')),
+        },
+        {
+          key: 'cycle',
+          label: 'Cycle',
+          align: 'center',
+          minWidth: '155px',
+          render: (row) => {
+            const cycleInfo = getCycleColor(row.cycle || 'Cycle 1 (1st - 15th)');
+            return (
+              <div className="flex items-center justify-center">
+                <span
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border shadow-2xs"
+                  style={{
+                    backgroundColor: cycleInfo.bg,
+                    color: cycleInfo.color,
+                    borderColor: cycleInfo.border,
+                  }}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: cycleInfo.dot }} />
+                  <span>{row.cycle || 'Cycle 1 (1st - 15th)'}</span>
+                </span>
+              </div>
+            );
+          },
+        },
+        { key: 'delivered', label: 'Delievred', align: 'right', isEditable: true, type: 'number', minWidth: '85px' },
+        { key: 'pickup', label: 'Pickup', align: 'right', isEditable: true, type: 'number', minWidth: '85px' },
+        {
+          key: 'deliveredPickupTotal',
+          label: 'Total',
+          align: 'right',
+          isEditable: true,
+          type: 'number',
+          minWidth: '95px',
+        },
+        { key: 'rateCard', label: 'Rate Card', align: 'right', isEditable: true, type: 'number', minWidth: '95px' },
+        {
+          key: 'payout',
+          label: 'Payout',
+          align: 'right',
+          isFormula: true,
+          minWidth: '105px',
+          cellBg: 'bg-emerald-50/25',
+        },
+        { key: 'loss', label: 'Loss', align: 'right', isEditable: true, type: 'number', minWidth: '85px', textClass: 'text-rose-700 font-semibold' },
+        { key: 'advance', label: 'Advance', align: 'right', isEditable: true, type: 'number', minWidth: '90px', textClass: 'text-amber-700 font-semibold' },
+        {
+          key: 'finalPayout',
+          label: 'Final Payout',
+          align: 'right',
+          isFormula: true,
+          minWidth: '120px',
+          cellBg: 'bg-blue-50/25',
+        },
+        { key: 'paymentStatus', label: 'Payment Stauts', align: 'center', type: 'status', minWidth: '130px' },
+        { key: 'ayushRemark', label: 'Ayush Remark', isEditable: true, type: 'text', minWidth: '140px', placeholder: 'Enter remark' },
+      ];
+    }
+
     return [
       { key: 'riderName', label: 'Rider Name', isEditable: true, type: 'text', minWidth: '150px' },
       { key: 'riderId', label: 'Rider Id', isEditable: true, type: 'text', minWidth: '105px' },
+      {
+        key: 'cycle',
+        label: 'Cycle',
+        align: 'center',
+        minWidth: '155px',
+        render: (row) => {
+          const cycleInfo = getCycleColor(row.cycle || 'Cycle 1 (1st - 15th)');
+          return (
+            <div className="flex items-center justify-center">
+              <span
+                className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold border shadow-2xs"
+                style={{
+                  backgroundColor: cycleInfo.bg,
+                  color: cycleInfo.color,
+                  borderColor: cycleInfo.border,
+                }}
+              >
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: cycleInfo.dot }} />
+                <span>{row.cycle || 'Cycle 1 (1st - 15th)'}</span>
+              </span>
+            </div>
+          );
+        },
+      },
       {
         key: 'deliveredPickupTotal',
         label: 'Delievred/Pickup Total',
@@ -1056,7 +1216,7 @@ export const Categories = () => {
       { key: 'paymentStatus', label: 'Payment Stauts', align: 'center', type: 'status', minWidth: '130px' },
       { key: 'ayushRemark', label: 'Ayush Remark', isEditable: true, type: 'text', minWidth: '140px', placeholder: 'Enter remark' },
     ];
-  }, [companyFormat]);
+  }, [companyFormat, currentCompany]);
 
   // Footer Summary Data
   const footerSummaryData = useMemo(() => {
@@ -1079,6 +1239,7 @@ export const Categories = () => {
       riderCombined: `Total (${displayedRows.length} Riders)`,
       riderName: `Total (${displayedRows.length} Riders)`,
       riderId: '',
+      cycle: '',
       delivered: totalDelivered,
       pickup: totalPickup,
       deliveredPickupTotal: totalDeliveries,
@@ -1098,16 +1259,39 @@ export const Categories = () => {
     <div className="h-full w-full flex flex-col min-h-0 gap-2">
       {/* Action Bar */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 bg-white p-2 rounded-xl border border-gray-200/80 shadow-xs shrink-0">
-        {/* Search */}
-        <div className="relative flex-1 max-w-sm">
-          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search rider name, ID, remark..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-3 py-1 text-xs bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-500 font-medium text-gray-900"
-          />
+        {/* Search & Cycle Filter */}
+        <div className="flex items-center gap-2 flex-1 max-w-lg">
+          <div className="relative flex-1">
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search rider name, ID, remark..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-8 pr-3 py-1 text-xs bg-white border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-500 font-medium text-gray-900"
+            />
+          </div>
+
+          {/* Quick In-Page Cycle Filter Dropdown (Shadowfax & XpressBees only) */}
+          {companyFormat !== 'valmo' && (
+            <div className="shrink-0 flex items-center gap-1">
+              <CustomDropdown
+                value={selectedCycleFilter || 'all'}
+                onChange={setSelectedCycleFilter}
+                options={[
+                  {
+                    value: 'all',
+                    label: 'All Cycles',
+                    icon: Clock,
+                  },
+                  ...getCycleOptions(currentCompany?.name).map((opt) => ({ ...opt, icon: Clock })),
+                ]}
+                icon={Clock}
+                size="sm"
+                minWidth="140px"
+              />
+            </div>
+          )}
         </div>
 
         {/* Soft Pastel Action Buttons */}
